@@ -611,7 +611,8 @@ function viewMerker() {
 function viewGenerer() {
   const minS = state.ovMinStatus, minQ = state.ovMinQuality;
   const pass = (i) => (minS === "Alle" || STATUS_RANK[i.status] >= STATUS_RANK[minS]) && (minQ === "Alle" || QUALITY_RANK[i.quality] >= QUALITY_RANK[minQ]);
-  const included = state.inventory.filter(pass);
+  // Kun toppnivå – deler/underdeler (f.eks. enkelttrommer i et sett) tas ikke med.
+  const included = state.inventory.filter((i) => (!i.parent_id || !inv(i.parent_id)) && pass(i));
   const date = new Date().toLocaleDateString("nb-NO", { day: "2-digit", month: "2-digit", year: "numeric" });
   const sel = (label, key, val, opts) => `<div class="field"><label>${label}</label><select data-ov="${key}">${opts.map((o) => `<option value="${o[0]}" ${val === o[0] ? "selected" : ""}>${o[1]}</option>`).join("")}</select></div>`;
   const cats = CATEGORIES.filter((c) => included.some((i) => i.category === c));
@@ -625,9 +626,13 @@ function viewGenerer() {
       <button class="btn brass" data-act="download-report">⬇ Last ned</button>
     </div>
     <div class="report" id="report">
-      <img class="report-logo" src="/randaberg-logo-red.png" alt="Randaberg Musikkorps" onerror="this.style.display='none'" />
-      <h2>Slagverksoversikt Randaberg Musikkorps</h2>
-      <div class="date">Sist oppdatert: ${date} · ${included.length} av ${state.inventory.length} enheter</div>
+      <div class="report-head">
+        <div>
+          <h2>Slagverksoversikt Randaberg Musikkorps</h2>
+          <div class="date">Sist oppdatert: ${date} · ${included.length} av ${state.inventory.length} komponenter</div>
+        </div>
+        <img class="report-logo" src="/randaberg-logo-red.png" alt="Randaberg Musikkorps" onerror="this.style.display='none'" />
+      </div>
       <div class="grid2">
         ${cats.map((c) => {
           const groups = []; const gm = new Map();
@@ -648,7 +653,7 @@ function viewGenerer() {
 function reportText() {
   const minS = state.ovMinStatus, minQ = state.ovMinQuality;
   const pass = (i) => (minS === "Alle" || STATUS_RANK[i.status] >= STATUS_RANK[minS]) && (minQ === "Alle" || QUALITY_RANK[i.quality] >= QUALITY_RANK[minQ]);
-  const included = state.inventory.filter(pass);
+  const included = state.inventory.filter((i) => (!i.parent_id || !inv(i.parent_id)) && pass(i));
   let out = `Slagverksoversikt Randaberg Musikkorps\nSist oppdatert: ${new Date().toLocaleDateString("nb-NO")}\n`;
   CATEGORIES.forEach((c) => {
     const items = included.filter((i) => i.category === c); if (!items.length) return;
