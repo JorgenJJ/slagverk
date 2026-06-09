@@ -1,0 +1,9 @@
+name = "slagverk-inventar"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "public"
+
+# D1-database. Lim inn database_id etter `wrangler d1 create slagverk-db`.
+[[d1_databases]]
+binding = "DB"
+database_name = "slagverk-db"
+database_id = "ERSTATT_MED_DIN_DATABASE_ID"

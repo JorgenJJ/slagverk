@@ -1,0 +1,16 @@
+{
+  "name": "slagverk-inventar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Inventar- og innkjøpsapp for slagverkseksjonen i Randaberg Musikkorps",
+  "scripts": {
+    "dev": "wrangler pages dev public --d1 DB=slagverk-db",
+    "db:create": "wrangler d1 create slagverk-db",
+    "db:migrate": "wrangler d1 migrations apply slagverk-db --remote",
+    "db:migrate:local": "wrangler d1 migrations apply slagverk-db --local",
+    "deploy": "wrangler pages deploy public"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

@@ -1,0 +1,28 @@
+// Enkel service worker: cacher app-skallet for offline/PWA-bruk.
+// API-kall går alltid til nett (network-first), aldri cache.
+const CACHE = "slagverk-v1";
+const SHELL = ["/", "/index.html", "/app.js", "/styles.css", "/manifest.webmanifest"];
+
+self.addEventListener("install", (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (e) => {
+  e.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener("fetch", (e) => {
+  const url = new URL(e.request.url);
+  // API: alltid nett
+  if (url.pathname.startsWith("/api/")) return;
+  // Skall: cache-first med nett-fallback
+  e.respondWith(
+    caches.match(e.request).then((hit) => hit || fetch(e.request))
+  );
+});
