@@ -6,4 +6,4 @@ pages_build_output_dir = "public"
 [[d1_databases]]
 binding = "DB"
 database_name = "slagverk-db"
-database_id = "ERSTATT_MED_DIN_DATABASE_ID"
+database_id = "1d541466-262e-4b69-a8bd-090649a78900"
