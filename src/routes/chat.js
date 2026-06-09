@@ -36,14 +36,16 @@ const ref = (what) => str(`${what}: id fra DATA, eller bare navnet/typen – app
 // Modellen har FULL tilgang: opprette, oppdatere og slette alt appen kan.
 const TOOLS = [
   // Inventar
-  { name: "add_inventory", description: "Legg til et utstyr vi eier. Eks: «legg til en triangel i perkusjon».",
+  { name: "add_inventory", description: "Legg til et utstyr vi eier. Kan være en del av noe (komponent-tre): et trommesett kan ha trommer/cymbaler/pedal som deler, en tromme kan ha skinn. Eks: «legg til en tom 12\" som del av trommesettet».",
     input_schema: { type: "object", required: ["type", "category"], properties: {
       type: str("instrumentnavn, f.eks. «Skarptromme»"), category: enm(CAT), brand: str("produsent"),
       model: str("modell, f.eks. «Professional Generation II»"), size: str("størrelse, f.eks. «36\"»"),
-      status: enm(STAT, "standard ok"), quality: enm(QUAL, "standard ukjent"), notes: str() } } },
-  { name: "update_inventory", description: "Endre et utstyr, f.eks. status/kvalitet. Eks: «xylofonen er ødelagt».",
+      status: enm(STAT, "standard ok"), quality: enm(QUAL, "standard ukjent"), notes: str(),
+      parent_ref: ref("komponenten dette er en del av (valgfritt – f.eks. trommesettet)") } } },
+  { name: "update_inventory", description: "Endre et utstyr, f.eks. status/kvalitet, eller flytt det inn under en komponent. Eks: «xylofonen er ødelagt».",
     input_schema: { type: "object", required: ["ref"], properties: {
-      ref: ref("utstyret"), type: str(), brand: str(), model: str(), size: str(), category: enm(CAT), status: enm(STAT), quality: enm(QUAL), notes: str() } } },
+      ref: ref("utstyret"), type: str(), brand: str(), model: str(), size: str(), category: enm(CAT), status: enm(STAT), quality: enm(QUAL), notes: str(),
+      parent_ref: ref("flytt inn under denne komponenten") } } },
   { name: "delete_inventory", description: "Slett et utstyr.",
     input_schema: { type: "object", required: ["ref"], properties: { ref: ref("utstyret") } } },
 
@@ -142,10 +144,17 @@ async function resolveRef(env, kind, value) {
 async function runTool(env, name, input) {
   switch (name) {
     // ── Inventar ──
-    case "add_inventory": { const row = await db.createInventory(env, input);
-      return { summary: `La til ${row.type}`, action: { kind: "inventory", op: "create", id: row.id, after: row } }; }
-    case "update_inventory": { const id = await resolveRef(env, "inventory", input.ref); const r = await db.updateInventory(env, id, input);
-      return { summary: `Oppdaterte ${r.after.type}`, action: { kind: "inventory", op: "update", id, before: r.before, after: r.after } }; }
+    case "add_inventory": {
+      if (input.parent_ref) input.parent_id = await resolveRef(env, "inventory", input.parent_ref);
+      const row = await db.createInventory(env, input);
+      return { summary: `La til ${row.type}`, action: { kind: "inventory", op: "create", id: row.id, after: row } };
+    }
+    case "update_inventory": {
+      const id = await resolveRef(env, "inventory", input.ref);
+      if (input.parent_ref) input.parent_id = await resolveRef(env, "inventory", input.parent_ref);
+      const r = await db.updateInventory(env, id, input);
+      return { summary: `Oppdaterte ${r.after.type}`, action: { kind: "inventory", op: "update", id, before: r.before, after: r.after } };
+    }
     case "delete_inventory": { const id = await resolveRef(env, "inventory", input.ref); const r = await db.deleteInventory(env, id);
       return { summary: `Slettet ${r.before.type}`, action: { kind: "inventory", op: "delete", id, before: r.before } }; }
 

@@ -8,7 +8,7 @@ import { newId } from "./helpers.js";
 
 export class ValidationError extends Error {}
 
-const INV_FIELDS  = ["type", "brand", "model", "size", "category", "status", "quality", "notes"];
+const INV_FIELDS  = ["type", "brand", "model", "size", "category", "status", "quality", "notes", "parent_id"];
 const WISH_FIELDS = ["type", "category", "priority", "estimated_price", "link", "notes", "budgeted", "replaces_inventory_id"];
 const LIST_FIELDS = ["name", "sort_order", "budget", "notes"];
 
@@ -31,11 +31,11 @@ export async function createInventory(env, b) {
   if (!b.type || !b.category) throw new ValidationError("type og category er påkrevd");
   const id = b.id || newId("INV");
   await env.DB.prepare(
-    `INSERT INTO inventory (id, type, brand, model, size, category, status, quality, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO inventory (id, type, brand, model, size, category, status, quality, notes, parent_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     id, b.type, b.brand || "", b.model || "", b.size || "", b.category,
-    b.status || "ok", b.quality || "ukjent", b.notes || ""
+    b.status || "ok", b.quality || "ukjent", b.notes || "", b.parent_id || null
   ).run();
   return getInventory(env, id);
 }
@@ -52,13 +52,30 @@ export async function updateInventory(env, id, b) {
   return { before, after: await getInventory(env, id) };
 }
 
+// Alle etterkommer-id-er (deler, underdeler …) under en node.
+async function descendantIds(env, id) {
+  const { results } = await env.DB.prepare("SELECT id, parent_id FROM inventory").all();
+  const childrenOf = {};
+  for (const r of results) (childrenOf[r.parent_id] ||= []).push(r.id);
+  const out = [], stack = [id];
+  while (stack.length) {
+    const cur = stack.pop();
+    for (const c of (childrenOf[cur] || [])) { out.push(c); stack.push(c); }
+  }
+  return out;
+}
+
 export async function deleteInventory(env, id) {
   const before = await getInventory(env, id);
   if (!before) return null;
-  // Nullstill erstatnings-koblinger som peker hit
-  await env.DB.prepare("UPDATE wishlist SET replaces_inventory_id = NULL WHERE replaces_inventory_id = ?").bind(id).run();
-  await env.DB.prepare("DELETE FROM inventory WHERE id = ?").bind(id).run();
-  return { before };
+  // Kaskade: slett noden OG alle underdeler.
+  const ids = [id, ...(await descendantIds(env, id))];
+  for (const d of ids) {
+    await env.DB.prepare("UPDATE wishlist SET replaces_inventory_id = NULL WHERE replaces_inventory_id = ?").bind(d).run();
+  }
+  const ph = ids.map(() => "?").join(",");
+  await env.DB.prepare(`DELETE FROM inventory WHERE id IN (${ph})`).bind(...ids).run();
+  return { before, deletedCount: ids.length };
 }
 
 // ───────────────────────── Wishlist (mangler) ─────────────────────────

@@ -15,6 +15,7 @@ genereres i Worker-en med `newId(prefix)` når klienten ikke sender egen `id`.
 | `brand` | TEXT | `''` | merke |
 | `model` | TEXT | `''` | modell (vises i generert oversikt) |
 | `size` | TEXT | `''` | størrelse, f.eks. `36"` |
+| `parent_id` | TEXT | `NULL` | **→** `inventory.id` – del av komponent (tre, vilkårlig dybde) |
 | `category` | TEXT | – | **påkrevd** (se kategoriliste) |
 | `status` | TEXT | `ok` | `ok` \| `redusert` \| `ødelagt` |
 | `quality` | TEXT | `ukjent` | `bra` \| `greit` \| `dårlig` \| `ukjent` |

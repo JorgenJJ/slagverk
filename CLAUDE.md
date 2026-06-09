@@ -62,10 +62,12 @@ wrangler.toml         Worker + [assets]=public/ + D1-binding DB
 
 ## Datamodell (D1)
 
-`inventory` (utstyr) · `wishlist` (mangler, `replaces_inventory_id` → inventory) ·
+`inventory` (utstyr; `parent_id` → inventory gir komponent-tre: trommesett→deler→
+skinn) · `wishlist` (mangler, `replaces_inventory_id` → inventory) ·
 `wishlist_options` (produkt-/prisalternativer per mangel) · `lists` (innkjøps­lister)
-· `list_items` (m2m liste↔mangel, valgfri `option_id`) · `brands` (godkjente merker).
-Full tabell-spec: [docs/datamodell-og-api.md](docs/datamodell-og-api.md).
+· `list_items` (m2m liste↔mangel, valgfri `option_id` = konkret produkt) ·
+`brands` (godkjente merker). Full tabell-spec:
+[docs/datamodell-og-api.md](docs/datamodell-og-api.md).
 
 ## Slik legger du til …
 

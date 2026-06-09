@@ -19,7 +19,7 @@ const state = {
   inventory: [], wishlist: [], lists: [], brands: [],
   filters: { category: [], status: [], quality: [], brand: [] },
   openFilter: null, filterSheet: false,
-  expandedGroups: {}, expandedWish: {},
+  expandedGroups: {}, expandedWish: {}, expandedNodes: {},
   ovMinStatus: "Alle", ovMinQuality: "Alle",
   chat: [], chatBusy: false, chatOpen: false, lastActions: [],
   modal: null,
@@ -113,6 +113,14 @@ const manglerTotal = () => state.wishlist.reduce((a, w) => a + effPrice(w), 0);
 const replacementFor = (invId) => state.wishlist.filter((w) => w.replaces_inventory_id === invId);
 const listsWith = (wishId) => state.lists.filter((l) => (l.items || []).some((it) => it.wishlist_id === wishId));
 const isErstatning = (w) => !!w.replaces_inventory_id;
+// ── Inventar-tre (komponent → deler) ──
+const invChildren = (id) => state.inventory.filter((i) => i.parent_id === id).sort((a, b) => (a.category + a.type).localeCompare(b.category + b.type));
+const invRoots = () => state.inventory.filter((i) => !i.parent_id || !inv(i.parent_id))
+  .sort((a, b) => (a.category + a.type).localeCompare(b.category + b.type));
+const invHasKids = (i) => state.inventory.some((x) => x.parent_id === i.id);
+function invSubtreeCount(id) { let n = 0; for (const c of invChildren(id)) n += 1 + invSubtreeCount(c.id); return n; }
+function invDescendants(id) { const out = []; for (const c of invChildren(id)) { out.push(c.id); out.push(...invDescendants(c.id)); } return out; }
+function invPath(i) { const out = []; let p = i.parent_id ? inv(i.parent_id) : null; let guard = 0; while (p && guard++ < 20) { out.unshift(p.type); p = p.parent_id ? inv(p.parent_id) : null; } return out; }
 
 // ── Export ──
 function invRows() {
@@ -143,22 +151,29 @@ function downloadCSV(rows, filename) {
   a.href = URL.createObjectURL(blob); a.download = filename; a.click();
 }
 function exportListCSV(l) {
-  const rows = [["Type", "Kategori", "Prioritet", "Antall", "Est. pris", "Sum"]];
+  const rows = [["Produkt", "For mangel", "Kategori", "Prioritet", "Antall", "Pris", "Sum", "Lenke"]];
   (l.items || []).forEach((it) => { const w = wish(it.wishlist_id); if (!w) return;
+    const o = it.option_id ? (w.options || []).find((x) => x.id === it.option_id) : null;
+    const prod = o ? ([o.brand, o.model, o.size].filter(Boolean).join(" ") || "Alternativ") : "(ingen valgt)";
     const p = optPriceFor(w, it.option_id);
-    rows.push([w.type, w.category, PRI_LABEL[w.priority], it.qty || 1, p || "", p * (it.qty || 1)]); });
-  rows.push([]); rows.push(["", "", "", "", "Sum:", listSum(l)]);
+    rows.push([prod, w.type, w.category, PRI_LABEL[w.priority], it.qty || 1, p || "", p * (it.qty || 1), o ? o.link : ""]); });
+  rows.push([]); rows.push(["", "", "", "", "", "Sum:", listSum(l), ""]);
   downloadCSV(rows, `innkjopsliste-${l.name.replace(/\s+/g, "-").toLowerCase()}.csv`);
   toast("Liste eksportert");
 }
 
 // ── Mutations ──
 async function saveInventory(item, isNew) {
-  if (isNew) await api("/inventory", { method: "POST", body: JSON.stringify(item) });
-  else await api("/inventory/" + item.id, { method: "PUT", body: JSON.stringify(item) });
+  const payload = { ...item, parent_id: item.parent_id || null };
+  if (isNew) await api("/inventory", { method: "POST", body: JSON.stringify(payload) });
+  else await api("/inventory/" + item.id, { method: "PUT", body: JSON.stringify(payload) });
   state.modal = null; await loadAll(); toast("Lagret");
 }
-async function deleteInventory(id) { await api("/inventory/" + id, { method: "DELETE" }); state.modal = null; await loadAll(); toast("Slettet"); }
+async function deleteInventory(id) {
+  const n = invSubtreeCount(id);
+  if (n > 0 && !confirm(`Dette sletter også ${n} underdel${n > 1 ? "er" : ""}. Fortsette?`)) return;
+  await api("/inventory/" + id, { method: "DELETE" }); state.modal = null; await loadAll(); toast("Slettet");
+}
 async function saveWish(item, isNew) {
   const payload = { ...item, estimated_price: item.estimated_price === "" ? null : Number(item.estimated_price) };
   if (isNew) await api("/wishlist", { method: "POST", body: JSON.stringify(payload) });
@@ -363,6 +378,53 @@ function renderFilterSheet() {
 
 // ── Oversikt (med gruppering av like rader) ──
 function groupKey(i) { return [i.type, i.brand, i.model, i.size, i.category, i.status, i.quality, i.notes].join(""); }
+const invCells = (i) => `
+  <td style="color:var(--muted)">${esc(i.brand) || "–"}</td>
+  <td class="mono">${esc(i.size) || "–"}</td>
+  <td><span class="mono">${esc(i.category)}</span></td>
+  <td><span class="tag ${i.status}">${STATUS_LABEL[i.status]}</span></td>
+  <td class="q-${i.quality}" style="font-weight:600">${esc(i.quality)}</td>
+  <td style="color:var(--muted);font-size:13px">${esc(i.notes) || "–"}</td>`;
+const invRepl = (i) => { const r = replacementFor(i.id); return r.length ? `<span class="link-chip repl" data-goto-wish="${esc(r[0].id)}" title="Planlagt erstatning">↪ ${esc(r[0].type)}</span>` : ""; };
+const invPad = (d) => 14 + d * 22;
+
+// Tre-rader (tabell) – komponent med deler er utvidbar; like blad-søsken grupperes ×N.
+function invTreeRows(siblings, depth) {
+  let html = ""; const seen = new Set();
+  for (const i of siblings) {
+    const kids = invChildren(i.id);
+    if (kids.length) {
+      const open = !!state.expandedNodes[i.id];
+      html += `<tr class="click parentrow" data-togglenode="${i.id}"><td style="padding-left:${invPad(depth)}px;font-weight:700">${open ? "▾" : "▸"} ${esc(i.type)} <span class="count">${kids.length} deler</span> ${invRepl(i)} <span class="link-chip" data-add-child="${i.id}">+ del</span> <span class="link-chip" data-edit-inv="${i.id}">✎</span></td>${invCells(i)}</tr>`;
+      if (open) html += invTreeRows(kids, depth + 1);
+    } else {
+      const k = groupKey(i); if (seen.has(k)) continue; seen.add(k);
+      const grp = siblings.filter((x) => !invChildren(x.id).length && groupKey(x) === k);
+      if (grp.length === 1) {
+        html += `<tr class="click" data-edit-inv="${i.id}"><td style="padding-left:${invPad(depth)}px;font-weight:${depth ? 600 : 700}">${esc(i.type)} ${invRepl(i)}</td>${invCells(i)}</tr>`;
+      } else {
+        const gk = (i.parent_id || "") + "|" + k; const open = !!state.expandedGroups[gk]; const ek = encodeURIComponent(gk);
+        html += `<tr class="click grouprow" data-togglegroup="${ek}"><td style="padding-left:${invPad(depth)}px;font-weight:700">${open ? "▾" : "▸"} ${esc(i.type)} <span class="count">×${grp.length}</span></td>${invCells(i)}</tr>`;
+        if (open) html += grp.map((it) => `<tr class="click child" data-edit-inv="${it.id}"><td style="padding-left:${invPad(depth + 1)}px">${esc(it.type)} ${invRepl(it)}</td>${invCells(it)}</tr>`).join("");
+      }
+    }
+  }
+  return html;
+}
+// Tre-kort (mobil)
+function invTreeCards(siblings, depth) {
+  return siblings.map((i) => {
+    const kids = invChildren(i.id); const open = !!state.expandedNodes[i.id];
+    if (!kids.length) return `<div class="card click" data-edit-inv="${i.id}" style="margin-left:${depth * 12}px">
+      <div class="row1"><div><div class="type">${esc(i.type)}</div><div class="meta">${[esc(i.brand), esc(i.size), esc(i.category)].filter(Boolean).join(" · ")}</div></div><span class="tag ${i.status}">${STATUS_LABEL[i.status]}</span></div>
+      ${i.notes ? `<div class="note">${esc(i.notes)}</div>` : ""}${replacementFor(i.id).length ? `<div class="chiprow">${invRepl(i)}</div>` : ""}</div>`;
+    return `<div class="card" style="margin-left:${depth * 12}px">
+      <div class="row1 click" data-togglenode="${i.id}"><div><div class="type">${open ? "▾" : "▸"} ${esc(i.type)} <span class="count">${kids.length} deler</span></div><div class="meta">${esc(i.category)}</div></div><span class="tag ${i.status}">${STATUS_LABEL[i.status]}</span></div>
+      <div class="chiprow"><span class="link-chip" data-add-child="${i.id}">+ del</span><span class="link-chip" data-edit-inv="${i.id}">✎ Rediger</span></div>
+      ${open ? invTreeCards(kids, depth + 1) : ""}</div>`;
+  }).join("");
+}
+
 function viewOversikt() {
   const all = state.inventory;
   const s = {
@@ -371,43 +433,28 @@ function viewOversikt() {
     ødelagt: all.filter((i) => i.status === "ødelagt").length,
     dårlig: all.filter((i) => i.quality === "dårlig").length,
   };
-  const filtered = all.filter(passesFilters);
-  // Grupper identiske rader
-  const groups = []; const gmap = new Map();
-  for (const i of filtered) { const k = groupKey(i); if (!gmap.has(k)) { gmap.set(k, []); groups.push(k); } gmap.get(k).push(i); }
+  const flat = anyFilter();   // filter aktivt → flat liste; ellers tre
+  let rows = "", cards = "";
 
-  const replChip = (i) => { const r = replacementFor(i.id); return r.length ? `<span class="link-chip repl" data-goto-wish="${esc(r[0].id)}" title="Planlagt erstatning">↪ ${esc(r[0].type)}</span>` : ""; };
-  const cells = (i) => `
-    <td style="color:var(--muted)">${esc(i.brand) || "–"}</td>
-    <td class="mono">${esc(i.size) || "–"}</td>
-    <td><span class="mono">${esc(i.category)}</span></td>
-    <td><span class="tag ${i.status}">${STATUS_LABEL[i.status]}</span></td>
-    <td class="q-${i.quality}" style="font-weight:600">${esc(i.quality)}</td>
-    <td style="color:var(--muted);font-size:13px">${esc(i.notes) || "–"}</td>`;
-
-  const rows = groups.map((k) => {
-    const g = gmap.get(k); const i = g[0];
-    if (g.length === 1) return `<tr class="click" data-edit-inv="${i.id}"><td style="font-weight:700">${esc(i.type)} ${replChip(i)}</td>${cells(i)}</tr>`;
-    const open = !!state.expandedGroups[k]; const ek = encodeURIComponent(k);
-    return `<tr class="click grouprow" data-togglegroup="${ek}">
-        <td style="font-weight:700">${open ? "▾" : "▸"} ${esc(i.type)} <span class="count">×${g.length}</span></td>${cells(i)}</tr>
-      ${open ? g.map((it) => `<tr class="click child" data-edit-inv="${it.id}"><td style="padding-left:30px">${esc(it.type)} ${replChip(it)}</td>${cells(it)}</tr>`).join("") : ""}`;
-  }).join("");
-
-  const cards = groups.map((k) => {
-    const g = gmap.get(k); const i = g[0]; const open = !!state.expandedGroups[k]; const ek = encodeURIComponent(k);
-    const cardInner = (it, head) => `
-      <div class="row1">
-        <div><div class="type">${esc(it.type)} ${head && g.length > 1 ? `<span class="count">×${g.length}</span>` : ""}</div><div class="meta">${[esc(it.brand), esc(it.size), esc(it.category)].filter(Boolean).join(" · ")}</div></div>
-        <span class="tag ${it.status}">${STATUS_LABEL[it.status]}</span>
-      </div>
-      <div class="meta">Kvalitet: <span class="q-${it.quality}" style="font-weight:600">${esc(it.quality)}</span></div>
-      ${it.notes ? `<div class="note">${esc(it.notes)}</div>` : ""}
-      ${replacementFor(it.id).length ? `<div class="chiprow">${replChip(it)}</div>` : ""}`;
-    if (g.length === 1) return `<div class="card click" data-edit-inv="${i.id}">${cardInner(i, false)}</div>`;
-    return `<div class="card"><div class="click" data-togglegroup="${ek}">${cardInner(i, true)}<div class="meta" style="margin-top:6px">${open ? "▾ skjul" : "▸ vis"} ${g.length} enheter</div></div>
-      ${open ? g.map((it) => `<div class="child-card click" data-edit-inv="${it.id}">${esc(it.type)} · <span class="q-${it.quality}">${esc(it.quality)}</span></div>`).join("") : ""}</div>`;
-  }).join("");
+  if (flat) {
+    const filtered = all.filter(passesFilters);
+    const groups = []; const gmap = new Map();
+    for (const i of filtered) { const k = groupKey(i); if (!gmap.has(k)) { gmap.set(k, []); groups.push(k); } gmap.get(k).push(i); }
+    const bc = (i) => { const p = invPath(i); return p.length ? `<span class="bc">${esc(p.join(" › "))} › </span>` : ""; };
+    rows = groups.map((k) => {
+      const g = gmap.get(k); const i = g[0];
+      if (g.length === 1) return `<tr class="click" data-edit-inv="${i.id}"><td style="font-weight:700">${bc(i)}${esc(i.type)} ${invRepl(i)}</td>${invCells(i)}</tr>`;
+      const open = !!state.expandedGroups[k]; const ek = encodeURIComponent(k);
+      return `<tr class="click grouprow" data-togglegroup="${ek}"><td style="font-weight:700">${open ? "▾" : "▸"} ${esc(i.type)} <span class="count">×${g.length}</span></td>${invCells(i)}</tr>
+        ${open ? g.map((it) => `<tr class="click child" data-edit-inv="${it.id}"><td style="padding-left:30px">${bc(it)}${esc(it.type)}</td>${invCells(it)}</tr>`).join("") : ""}`;
+    }).join("");
+    cards = filtered.map((i) => `<div class="card click" data-edit-inv="${i.id}">
+      <div class="row1"><div><div class="type">${esc(i.type)}</div><div class="meta">${invPath(i).length ? esc(invPath(i).join(" › ")) + " · " : ""}${[esc(i.brand), esc(i.size), esc(i.category)].filter(Boolean).join(" · ")}</div></div><span class="tag ${i.status}">${STATUS_LABEL[i.status]}</span></div>
+      ${i.notes ? `<div class="note">${esc(i.notes)}</div>` : ""}</div>`).join("");
+  } else {
+    rows = invTreeRows(invRoots(), 0);
+    cards = invTreeCards(invRoots(), 0);
+  }
 
   return `
     <div class="stats">
@@ -418,9 +465,10 @@ function viewOversikt() {
       <div class="stat click ${statActive("quality", "dårlig") ? "on" : ""}" data-stat="quality:dårlig"><b style="color:var(--warn)">${s.dårlig}</b><span>Dårlig kval.</span></div>
     </div>
     ${filterBar()}
+    ${flat ? "" : `<div class="tree-hint">Klikk en komponent (f.eks. trommesett) for å se delene. Filtrer for å se alt flatt.</div>`}
     <table>
       <thead><tr><th>Type</th><th>Merke</th><th>Størrelse</th><th>Kategori</th><th>Status</th><th>Kvalitet</th><th>Merknader</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="7" style="color:var(--muted)">Ingen treff med valgte filtre.</td></tr>`}</tbody>
+      <tbody>${rows || `<tr><td colspan="7" style="color:var(--muted)">Ingen treff.</td></tr>`}</tbody>
     </table>
     <div class="cards">${cards || `<p style="color:var(--muted)">Ingen treff.</p>`}</div>`;
 }
@@ -514,12 +562,19 @@ function listCard(l) {
       ${l.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${esc(l.notes)}</div>` : ""}
     </div>
     <div class="body">
-      ${items.length ? items.map(({ it, w }) => `<div class="li click" data-li-edit="${w.id}">
-        <span class="tag ${w.priority}" style="font-size:10px">${PRI_LABEL[w.priority]}</span>
-        <span style="flex:1">${esc(w.type)}${it.option_id ? ` <span class="mono">· valgt alt.</span>` : ""}</span>
-        <span class="price">${fmt(optPriceFor(w, it.option_id) * (it.qty || 1))}</span>
-        <span class="x" data-rmitem="${l.id}|${w.id}" title="Fjern">✕</span>
-      </div>`).join("") : `<div class="empty">Tom – legg til mangler.</div>`}
+      ${items.length ? items.map(({ it, w }) => {
+        const o = it.option_id ? (w.options || []).find((x) => x.id === it.option_id) : null;
+        const prod = o ? ([o.brand, o.model, o.size].filter(Boolean).join(" ") || "Alternativ") : esc(w.type);
+        return `<div class="li">
+          <span class="tag ${w.priority}" style="font-size:10px">${PRI_LABEL[w.priority]}</span>
+          <div style="flex:1;min-width:0" class="click" data-li-edit="${w.id}">
+            <div class="li-prod">${o ? esc(prod) : esc(w.type)}${o && o.link ? ` <a href="${esc(o.link)}" target="_blank" rel="noreferrer" data-stoplink>🔗</a>` : ""}</div>
+            ${o ? `<div class="li-ref">↳ ${esc(w.type)}</div>` : `<div class="li-ref" style="color:var(--faint)">velg produkt via «+ Legg til varer»</div>`}
+          </div>
+          <span class="price">${fmt(optPriceFor(w, it.option_id) * (it.qty || 1))}</span>
+          <span class="x" data-rmitem="${l.id}|${w.id}" title="Fjern">✕</span>
+        </div>`;
+      }).join("") : `<div class="empty">Tom – legg til mangler.</div>`}
     </div>
     <div class="foot">
       <button class="btn ghost sm" data-add-items="${l.id}">+ Legg til varer</button>
@@ -625,12 +680,20 @@ function modalEntity(m) {
   const sel = (label, key, opts) => `<div class="field"><label>${label}</label><select data-f="${key}">${opts.map((o) => `<option ${item[key] === o ? "selected" : ""}>${o}</option>`).join("")}</select></div>`;
   const brandList = `<datalist id="brandlist">${state.brands.map((b) => `<option value="${esc(b.name)}">`).join("")}</datalist>`;
   const invReplaceOpts = state.inventory.filter((i) => i.quality === "dårlig" || i.status !== "ok");
+  const parentOpts = (() => {
+    const skip = new Set([item.id, ...(item.id ? invDescendants(item.id) : [])]);
+    return state.inventory.filter((p) => !skip.has(p.id));
+  })();
   const body = isInv ? `
     ${txt("Type", "type")}
     <div class="field"><label>Merke</label><input data-f="brand" list="brandlist" value="${esc(item.brand ?? "")}" />${brandList}</div>
     ${txt("Modell", "model")}${txt("Størrelse", "size")}
     ${sel("Kategori", "category", CATEGORIES)}${sel("Status", "status", STATUSES)}${sel("Kvalitet", "quality", QUALITIES)}
-    ${txt("Merknader", "notes")}` : `
+    ${txt("Merknader", "notes")}
+    <div class="field"><label>Del av (komponent, valgfritt)</label><select data-f="parent_id">
+      <option value="">– ingen (toppnivå) –</option>
+      ${parentOpts.map((p) => `<option value="${esc(p.id)}" ${item.parent_id === p.id ? "selected" : ""}>${esc(invPath(p).concat(p.type).join(" › "))}</option>`).join("")}
+    </select></div>` : `
     ${txt("Type", "type")}${sel("Kategori", "category", CATEGORIES)}${sel("Prioritet", "priority", PRIORITIES)}
     ${txt("Estimert pris (kr)", "estimated_price", "number")}${txt("Link", "link")}${txt("Merknader", "notes")}
     <div class="field"><label>Erstatter (utstyr i dårlig stand)</label><select data-f="replaces_inventory_id">
@@ -656,12 +719,19 @@ function modalListForm(m) {
 }
 function modalListItems(m) {
   const l = byId(state.lists, m.listId); if (!l) { state.modal = null; return ""; }
-  const inList = new Set((l.items || []).map((it) => it.wishlist_id));
+  const byWish = {}; (l.items || []).forEach((it) => { byWish[it.wishlist_id] = it; });
   return `<div class="modal-bg" data-act="close-modal"><div class="modal" data-stop>
     <h3>Varer i «${esc(l.name)}»</h3>
-    <div class="picklist">${state.wishlist.map((w) => `<label><input type="checkbox" data-toggleitem="${l.id}|${w.id}" ${inList.has(w.id) ? "checked" : ""}>
-      <span style="flex:1">${esc(w.type)} <span style="color:var(--faint);font-size:12px">${esc(w.category)}</span></span>
-      <span class="price">${priceDisplay(w)}</span></label>`).join("")}</div>
+    <p style="color:var(--muted);font-size:12.5px;margin:0 0 10px">Velg mangler, og hvilket konkret produkt som skal kjøpes.</p>
+    <div class="picklist">${state.wishlist.map((w) => {
+      const opts = w.options || []; const cur = byWish[w.id];
+      const curOpt = cur ? cur.option_id : (opts[0] ? opts[0].id : "");
+      return `<label><input type="checkbox" data-toggleitem="${l.id}|${w.id}" ${cur ? "checked" : ""}>
+        <span style="flex:1;min-width:0">${esc(w.type)} <span style="color:var(--faint);font-size:12px">${esc(w.category)}</span></span>
+        ${opts.length
+          ? `<select data-listopt="${w.id}" style="width:auto;max-width:55%">${opts.map((o) => `<option value="${esc(o.id)}" ${curOpt === o.id ? "selected" : ""}>${esc([o.brand, o.model].filter(Boolean).join(" ") || "Alternativ")} – ${fmt(o.price)}</option>`).join("")}</select>`
+          : `<span class="price">${priceDisplay(w)}</span>`}</label>`;
+    }).join("")}</div>
     <div class="actions"><span class="spacer"></span><button class="btn" data-act="close-modal">Ferdig</button></div>
   </div></div>`;
 }
@@ -747,6 +817,8 @@ function wire() {
   q("[data-edit-inv]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); openModal({ kind: "edit-inv", item: { ...inv(el.dataset.editInv) } }); });
   q("[data-edit-wish]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); openModal({ kind: "edit-wish", item: { ...wish(el.dataset.editWish) } }); });
   q("[data-togglegroup]").forEach((el) => el.onclick = () => { const k = decodeURIComponent(el.dataset.togglegroup); state.expandedGroups[k] = !state.expandedGroups[k]; render(); });
+  q("[data-togglenode]").forEach((el) => el.onclick = (e) => { if (e.target.closest("[data-edit-inv],[data-add-child],[data-goto-wish]")) return; const id = el.dataset.togglenode; state.expandedNodes[id] = !state.expandedNodes[id]; render(); });
+  q("[data-add-child]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const par = inv(el.dataset.addChild); openModal({ kind: "add-inv", item: { type: "", brand: "", model: "", size: "", category: par ? par.category : "Trommer", status: "ok", quality: "ukjent", notes: "", parent_id: el.dataset.addChild } }); });
   q("[data-togglewish]").forEach((el) => el.onclick = (e) => { if (e.target.closest("[data-edit-wish],[data-goto-inv]")) return; state.expandedWish[el.dataset.togglewish] = !state.expandedWish[el.dataset.togglewish]; render(); });
 
   // Alternativer (options)
@@ -765,8 +837,17 @@ function wire() {
   q("[data-export-list]").forEach((el) => el.onclick = () => exportListCSV(byId(state.lists, el.dataset.exportList)));
   q("[data-del-list]").forEach((el) => el.onclick = () => { if (confirm("Slette listen?")) deleteList(el.dataset.delList); });
   q("[data-rmitem]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [lid, wid] = splitFirst(el.dataset.rmitem); toggleListItem(lid, wid, false); });
-  q("[data-li-edit]").forEach((el) => el.onclick = (e) => { if (e.target.closest("[data-rmitem]")) return; openModal({ kind: "edit-wish", item: { ...wish(el.dataset.liEdit) } }); });
-  q("[data-toggleitem]").forEach((cb) => cb.onchange = () => { const [lid, wid] = splitFirst(cb.dataset.toggleitem); toggleListItem(lid, wid, cb.checked); });
+  q("[data-li-edit]").forEach((el) => el.onclick = (e) => { if (e.target.closest("[data-rmitem],a,[data-stoplink]")) return; openModal({ kind: "edit-wish", item: { ...wish(el.dataset.liEdit) } }); });
+  q("[data-toggleitem]").forEach((cb) => cb.onchange = () => {
+    const [lid, wid] = splitFirst(cb.dataset.toggleitem);
+    const selEl = root.querySelector(`[data-listopt="${wid}"]`);
+    toggleListItem(lid, wid, cb.checked, selEl ? (selEl.value || null) : null);
+  });
+  q("[data-listopt]").forEach((sel) => sel.onchange = () => {
+    const wid = sel.dataset.listopt; const lid = state.modal && state.modal.listId;
+    const cb = root.querySelector(`[data-toggleitem="${lid}|${wid}"]`);
+    if (lid && cb && cb.checked) toggleListItem(lid, wid, true, sel.value || null); // upsert med valgt produkt
+  });
   q("[data-choose-list]").forEach((el) => el.onclick = () => addToListChosen(el.dataset.chooseList, state.modal.wishId, state.modal.optionId));
 
   // Merker
@@ -779,7 +860,7 @@ function wire() {
     const act = el.dataset.act;
     const A = {
       logout, "export-all": exportExcelAll, "fetch-prices": fetchAllPrices,
-      "add-inv": () => openModal({ kind: "add-inv", item: { type: "", brand: "", category: "Trommer", status: "ok", quality: "ukjent", notes: "" } }),
+      "add-inv": () => openModal({ kind: "add-inv", item: { type: "", brand: "", model: "", size: "", category: "Trommer", status: "ok", quality: "ukjent", notes: "", parent_id: "" } }),
       "add-wish": () => openModal({ kind: "add-wish", item: { type: "", category: "Trommer", priority: "middels", estimated_price: "", link: "", notes: "", replaces_inventory_id: "" } }),
       "add-list": () => openModal({ kind: "list-form", item: { name: "", budget: "", notes: "" } }),
       "add-brand": () => openModal({ kind: "brand-form", item: { name: "", category: "Generelt", notes: "" } }),

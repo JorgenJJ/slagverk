@@ -56,6 +56,12 @@ Flere navngitte lister samtidig (f.eks. «Prioritert 2026», «NM 2026»), hver 
 I tillegg vises en **overordnet sum** for alle mangler. Summene regnes ut i
 frontend fra prisene i `wishlist`, så de holder seg konsistente.
 
+**Listene viser konkret produkt.** En liste-linje peker på et **alternativ**
+(`list_items.option_id`) – det faktiske produktet som skal kjøpes (merke/modell/
+størrelse + pris + lenke), med en liten referanse «↳ for: \<mangel\>» tilbake til
+mangelen. «+ Legg til varer» lar deg velge mangel + hvilket alternativ (standard:
+billigste). Mangel uten alternativer vises som mangelen selv.
+
 ## Generér oversikt
 
 Lager en ferdig, utskriftsvennlig oversikt (samme form som det gamle
@@ -178,6 +184,22 @@ som et **spenn** (laveste–høyeste), og raden kan **ekspanderes** for å se hv
 alternativ. Derfra kan et alternativ legges rett i en innkjøpsliste. En kolonne
 viser om raden er en **Mangel** eller en **Erstatning** (utledet av
 `replaces_inventory_id`).
+
+## Komponent-tre (Oversikt)
+
+Utstyr kan ha **deler** (selv-refererende `parent_id`, vilkårlig dybde): et
+trommesett → trommer/cymbaler/pedal → hver tromme kan ha skinn. Slik unngår man at
+alt ligger flatt.
+
+- **Uten filter:** Oversikt viser kun **toppnivå** (røtter). En komponent med deler
+  har ekspander + «N deler»; klikk for å se delene, som igjen kan utvides. På noden:
+  «+ del» (legg barn) og «✎» (rediger).
+- **Med filter:** bytter til **flat liste** av alle treff, med en sti-smule
+  («Trommesett › Tom 12" ›») så man ser hva delen hører til. Tre = bla, flat = søk.
+- **Sletting** av en komponent fjerner hele undertreet (bekreftelse med antall).
+- AI kan bygge treet: `parent_ref` på `add/update_inventory` («legg til en tom 12"
+  som del av trommesettet»).
+- Mangler-fanen er fortsatt **flat** (ingen tre).
 
 ## Filtre og gruppering (Oversikt)
 
