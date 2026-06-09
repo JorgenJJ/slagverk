@@ -48,17 +48,18 @@ genereres i Worker-en med `newId(prefix)` når klienten ikke sender egen `id`.
 | `archived_at` | TEXT | `NULL` | satt = kjøpt/arkivert |
 | `notes` | TEXT | `''` | |
 
-### `list_items` – innhold i listene (mange-til-mange)
+### `list_items` – innhold i listene (konkrete produkter)
 
 | Kolonne | Type | Merknad |
 |---|---|---|
 | `list_id` | TEXT | **→** `lists.id` |
-| `wishlist_id` | TEXT | **→** `wishlist.id` |
+| `option_id` | TEXT | **→** `wishlist_options.id` – PRODUKTET (del av primærnøkkel) |
+| `wishlist_id` | TEXT | **→** `wishlist.id` – mangelen produktet hører til (tilbake-ref) |
 | `qty` | INTEGER | antall (standard 1) |
 
-En mangel kan ligge i flere lister. `list_items.option_id` (valgfri) lar en
-liste-linje peke på et konkret produktalternativ. Per-liste-sum og overordnet sum
-regnes ut i frontend.
+**En liste-linje ER et produkt.** Primærnøkkel `(list_id, option_id)`. Det er ikke
+mulig å legge en bar mangel i en liste – kun et konkret alternativ. Mangelen utledes
+av produktets `wishlist_id`. Per-liste-sum/overordnet sum regnes ut i frontend.
 
 ### `wishlist_options` – produkt-/prisalternativer per mangel
 
@@ -87,7 +88,7 @@ høyeste). `effPrice` (laveste alternativ, ellers `estimated_price`) brukes i su
 ryddes i app-logikken (slette utstyr nullstiller pekere; slette liste/mangel
 fjerner rader i `list_items`).
 
-**Kategorier:** Trommer, Melodisk, Pauker, Cymbaler, Stativer, Perkusjon.
+**Kategorier:** Trommer, Melodisk, Pauker, Cymbaler, Stativer, Perkusjon, Stikker og klubber.
 
 ## API
 
@@ -102,8 +103,8 @@ Alt under `/api/`, JSON inn/ut, krever `x-access-code`-header.
 | `PUT/DELETE` | `/api/wishlist/:id` | Oppdater / slett |
 | `GET/POST` | `/api/lists` | List (m/ `items`) / opprett liste |
 | `PUT/DELETE` | `/api/lists/:id` | Oppdater / slett liste |
-| `POST` | `/api/lists/:id/items` | Legg mangel i liste `{wishlist_id, qty?, option_id?}` |
-| `DELETE` | `/api/lists/:id/items/:wishlistId` | Fjern mangel fra liste |
+| `POST` | `/api/lists/:id/items` | Legg **produkt** i liste `{option_id, qty?}` (mangel uten produkt → 400) |
+| `DELETE` | `/api/lists/:id/items/:optionId` | Fjern produkt fra liste |
 | `POST` | `/api/wishlist/:id/fulfill` | Marker mangel kjøpt `{option_id?}` → blir inventar |
 | `POST` | `/api/lists/:id/fulfill` | Marker hele lista kjøpt → oppfyll alle + arkiver |
 | `POST` | `/api/wishlist/:id/options` | Nytt alternativ for en mangel |

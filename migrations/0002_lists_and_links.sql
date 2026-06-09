@@ -28,15 +28,3 @@ CREATE TABLE IF NOT EXISTS list_items (
 CREATE INDEX IF NOT EXISTS idx_list_items_list ON list_items(list_id);
 CREATE INDEX IF NOT EXISTS idx_list_items_wish ON list_items(wishlist_id);
 CREATE INDEX IF NOT EXISTS idx_wishlist_replaces ON wishlist(replaces_inventory_id);
-
--- ── Seed: én eksempelliste + koblinger som viser hvordan ting henger sammen ──
-INSERT INTO lists (id, name, sort_order, budget, notes) VALUES
-  ('L-1','Prioritert 2026', 0, 100000, 'Høyest prioriterte innkjøp');
-
-INSERT INTO list_items (list_id, wishlist_id, qty) VALUES
-  ('L-1','W-1',1),   -- Grand casa
-  ('L-1','W-2',1),   -- Pauke 32"
-  ('L-1','W-3',1);   -- Pauke 23"
-
--- Vibrafon (ny) er erstatning for den reduserte vibrafonen vi har (VB-1)
-UPDATE wishlist SET replaces_inventory_id = 'VB-1' WHERE id = 'W-4';

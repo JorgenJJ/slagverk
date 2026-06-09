@@ -44,7 +44,7 @@ const ROUTES = [
   // Mer spesifikke lister-ruter (items) før de generelle.
   { method: "POST",   pattern: /^\/api\/lists\/([^/]+)\/fulfill\/?$/,      handler: (req, env, m) => lists.fulfill(req, env, { id: id(m, 1) }) },
   { method: "POST",   pattern: /^\/api\/lists\/([^/]+)\/items\/?$/,        handler: (req, env, m) => lists.addItem(req, env, { id: id(m, 1) }) },
-  { method: "DELETE", pattern: /^\/api\/lists\/([^/]+)\/items\/([^/]+)$/,  handler: (req, env, m) => lists.removeItem(req, env, { id: id(m, 1), wishlistId: id(m, 2) }) },
+  { method: "DELETE", pattern: /^\/api\/lists\/([^/]+)\/items\/([^/]+)$/,  handler: (req, env, m) => lists.removeItem(req, env, { id: id(m, 1), optionId: id(m, 2) }) },
   { method: "GET",    pattern: /^\/api\/lists\/?$/,           handler: (req, env) => lists.list(req, env) },
   { method: "POST",   pattern: /^\/api\/lists\/?$/,           handler: (req, env) => lists.create(req, env) },
   { method: "PUT",    pattern: /^\/api\/lists\/([^/]+)$/,     handler: (req, env, m) => lists.update(req, env, { id: id(m, 1) }) },

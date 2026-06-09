@@ -21,7 +21,7 @@ import * as db from "../db.js";
 const DEFAULT_MODEL = { anthropic: "claude-haiku-4-5-20251001", openai: "gpt-4.1-nano" };
 const MAX_STEPS = 16; // verktøy-runder per melding (større jobber trenger mange runder)
 
-const CAT = ["Trommer", "Melodisk", "Pauker", "Cymbaler", "Stativer", "Perkusjon"];
+const CAT = ["Trommer", "Melodisk", "Pauker", "Cymbaler", "Stativer", "Perkusjon", "Stikker og klubber"];
 const BRANDCAT = ["Generelt", ...CAT];
 const STAT = ["ok", "redusert", "ødelagt"];
 const QUAL = ["bra", "greit", "dårlig", "ukjent"];
@@ -69,12 +69,12 @@ const TOOLS = [
     input_schema: { type: "object", required: ["ref"], properties: { ref: ref("listen"), name: str("nytt navn"), budget: num(), notes: str() } } },
   { name: "delete_list", description: "Slett en innkjøpsliste.",
     input_schema: { type: "object", required: ["ref"], properties: { ref: ref("listen") } } },
-  { name: "add_to_list", description: "Legg en mangel i en innkjøpsliste.",
-    input_schema: { type: "object", required: ["list_ref", "wishlist_ref"], properties: {
-      list_ref: ref("listen"), wishlist_ref: ref("mangelen"), qty: num("antall, standard 1") } } },
-  { name: "remove_from_list", description: "Fjern en mangel fra en innkjøpsliste.",
-    input_schema: { type: "object", required: ["list_ref", "wishlist_ref"], properties: {
-      list_ref: ref("listen"), wishlist_ref: ref("mangelen") } } },
+  { name: "add_to_list", description: "Legg et KONKRET PRODUKT (et alternativ fra en mangel) i en innkjøpsliste. En liste kan KUN inneholde produkter, ikke mangler. Mangelen må derfor ha et alternativ (add_option) først.",
+    input_schema: { type: "object", required: ["list_ref", "option_ref"], properties: {
+      list_ref: ref("listen"), option_ref: ref("produktet/alternativet (produsent/modell)"), qty: num("antall, standard 1") } } },
+  { name: "remove_from_list", description: "Fjern et produkt fra en innkjøpsliste.",
+    input_schema: { type: "object", required: ["list_ref", "option_ref"], properties: {
+      list_ref: ref("listen"), option_ref: ref("produktet/alternativet") } } },
 
   // Godkjente merker
   { name: "add_brand", description: "Legg til et godkjent/foretrukket merke. Eks: «Gretsch er foretrukket innen trommer».",
@@ -183,12 +183,12 @@ async function runTool(env, name, input) {
       return { summary: `Oppdaterte listen «${r.after.name}»`, action: { kind: "list", op: "update", id, before: r.before, after: r.after } }; }
     case "delete_list": { const id = await resolveRef(env, "list", input.ref); const r = await db.deleteList(env, id);
       return { summary: `Slettet listen «${r.before.name}»`, action: { kind: "list", op: "delete", id, before: r.before } }; }
-    case "add_to_list": { const lid = await resolveRef(env, "list", input.list_ref); const wid = await resolveRef(env, "wishlist", input.wishlist_ref);
-      await db.addToList(env, lid, wid, input.qty);
-      return { summary: `La mangel i liste`, action: { kind: "list_item", op: "add", list_id: lid, wishlist_id: wid } }; }
-    case "remove_from_list": { const lid = await resolveRef(env, "list", input.list_ref); const wid = await resolveRef(env, "wishlist", input.wishlist_ref);
-      await db.removeFromList(env, lid, wid);
-      return { summary: `Fjernet mangel fra liste`, action: { kind: "list_item", op: "remove", list_id: lid, wishlist_id: wid } }; }
+    case "add_to_list": { const lid = await resolveRef(env, "list", input.list_ref); const oid = await resolveRef(env, "option", input.option_ref);
+      await db.addToList(env, lid, oid, input.qty);
+      return { summary: `La produkt i liste`, action: { kind: "list_item", op: "add", list_id: lid, option_id: oid } }; }
+    case "remove_from_list": { const lid = await resolveRef(env, "list", input.list_ref); const oid = await resolveRef(env, "option", input.option_ref);
+      await db.removeFromList(env, lid, oid);
+      return { summary: `Fjernet produkt fra liste`, action: { kind: "list_item", op: "remove", list_id: lid, option_id: oid } }; }
 
     // ── Godkjente merker ──
     case "add_brand": { const row = await db.createBrand(env, input);
@@ -374,12 +374,15 @@ DATAMODELL
   (konkrete produkter med pris). Skal mangelen erstatte et eksisterende utstyr i
   dårlig stand, sett replaces_inventory_id (da er det en «erstatning», ellers en
   vanlig «mangel»).
-- Innkjøpsliste = navngitt samling mangler man kjøper sammen, med egen sum/budsjett.
-  Samme mangel kan ligge i flere lister.
+- Innkjøpsliste = navngitt samling KONKRETE PRODUKTER man skal kjøpe (egen sum/
+  budsjett). En liste-linje er ALLTID et produkt (et alternativ fra en mangel) – ALDRI
+  en bar mangel. For å legge noe i en liste: finn/lag et alternativ på mangelen
+  (søk med search_store → add_option), og legg deretter DET produktet i lista med
+  add_to_list (option_ref). Har mangelen flere alternativer, velg det beste.
 - Godkjente merker = foretrukne leverandører, gruppert etter utstyrstype.
 
 GYLDIGE VERDIER
-kategori = Trommer|Melodisk|Pauker|Cymbaler|Stativer|Perkusjon
+kategori = Trommer|Melodisk|Pauker|Cymbaler|Stativer|Perkusjon|Stikker og klubber
 status = ok|redusert|ødelagt · kvalitet = bra|greit|dårlig|ukjent · prioritet = høy|middels|lav
 
 PLASSERING I KATEGORI (hint)
@@ -389,6 +392,7 @@ PLASSERING I KATEGORI (hint)
 - Cymbaler: suspended cymbal, tam tam, ride/crash/hi-hat
 - Stativer: stikkebord, notestativ
 - Perkusjon: tamburin, belltree, woodblock, triangel, shaker, cajon
+- Stikker og klubber: trommestikker, pauke-klubber, marimbakøller, visper, mallets
 
 TVETYDIGHET
 Handle direkte når det er klart. Hvis flere ting matcher (f.eks. to like

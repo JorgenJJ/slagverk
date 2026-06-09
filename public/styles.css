@@ -49,6 +49,7 @@ body {
     repeating-linear-gradient(0deg, rgba(120,90,40,.014) 0 1px, transparent 1px 3px);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;   /* hindrer horisontal scrollbar når <main> dras under sveip */
   /* plass til den dockede AI-baren */
   padding-bottom: calc(64px + env(safe-area-inset-bottom));
 }
@@ -133,7 +134,7 @@ nav.tabs button:hover { color: var(--ink); }
 nav.tabs button.active { color: var(--red); border-bottom-color: var(--red); }
 
 /* ─────────────── Layout ─────────────── */
-main { max-width: 1080px; margin: 0 auto; padding: 22px 18px 40px; }
+main { max-width: 1080px; margin: 0 auto; padding: 22px 18px 40px; touch-action: pan-y; will-change: transform; }
 main.view-enter { animation: fade .3s ease; }   /* kun ved fanebytte, ikke hvert klikk */
 @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
@@ -295,6 +296,9 @@ tr.click:hover { background: #fbf6ec; }
 .modal .picklist label { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 14px; }
 .modal .picklist label:last-child { border-bottom: none; }
 .modal .picklist input { width: auto; }
+.pick-mangel { padding: 9px 12px 3px; font-weight: 700; font-size: 13px; border-bottom: 1px solid var(--line); background: var(--paper-2); }
+.pick-opt { padding-left: 22px !important; }
+.pick-empty { padding: 6px 12px 9px 22px; font-size: 12px; color: var(--faint); border-bottom: 1px solid var(--line); }
 
 /* ─────────────── Toast ─────────────── */
 .toast {

@@ -38,20 +38,20 @@ export async function remove(request, env, params) {
   return res ? json({ ok: true }) : err("Fant ikke listen", 404);
 }
 
-// POST /api/lists/:id/items   { wishlist_id, qty? }
+// POST /api/lists/:id/items   { option_id, qty? }  – legg et PRODUKT i lista
 export async function addItem(request, env, params) {
   const unauth = requireAuth(request, env); if (unauth) return unauth;
   try {
     const b = await body(request);
-    if (!b.wishlist_id) throw new ValidationError("wishlist_id er påkrevd");
-    return json(await addToList(env, params.id, b.wishlist_id, b.qty, b.option_id));
+    if (!b.option_id) throw new ValidationError("option_id er påkrevd – en liste kan kun inneholde konkrete produkter");
+    return json(await addToList(env, params.id, b.option_id, b.qty));
   } catch (e) { return fail(e); }
 }
 
-// DELETE /api/lists/:id/items/:wishlistId
+// DELETE /api/lists/:id/items/:optionId
 export async function removeItem(request, env, params) {
   const unauth = requireAuth(request, env); if (unauth) return unauth;
-  const res = await removeFromList(env, params.id, params.wishlistId);
+  const res = await removeFromList(env, params.id, params.optionId);
   return res.ok ? json({ ok: true }) : err("Fant ikke varen i listen", 404);
 }
 

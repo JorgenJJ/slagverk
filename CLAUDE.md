@@ -45,7 +45,7 @@ wrangler.toml         Worker + [assets]=public/ + D1-binding DB
   502 ekstern tjeneste. Feilsvar: `{ "error": "<melding>" }`.
 - **Språk:** alt brukervendt er på **norsk (bokmål)**. Kode/kommentarer norsk er ok.
 - **Enums (må holdes i synk frontend ↔ DB ↔ AI-verktøy):**
-  - kategori: `Trommer | Melodisk | Pauker | Cymbaler | Stativer | Perkusjon`
+  - kategori: `Trommer | Melodisk | Pauker | Cymbaler | Stativer | Perkusjon | Stikker og klubber`
   - status: `ok | redusert | ødelagt`
   - kvalitet: `bra | greit | dårlig | ukjent`
   - prioritet: `høy | middels | lav`
@@ -66,7 +66,8 @@ wrangler.toml         Worker + [assets]=public/ + D1-binding DB
 skinn; `retired_at` = utgått/erstattet, skjult men bevart) · `wishlist` (mangler,
 `replaces_inventory_id` → inventory) · `wishlist_options` (produkt-/prisalternativer
 per mangel) · `lists` (innkjøps­lister; `archived_at` = kjøpt/arkivert) · `list_items`
-(m2m liste↔mangel, valgfri `option_id` = konkret produkt) · `brands` (godkjente merker).
+(liste-linje = konkret PRODUKT; PK `(list_id, option_id)`, `wishlist_id` = tilbake-ref;
+aldri en bar mangel) · `brands` (godkjente merker).
 
 **Oppfyllelse:** «marker kjøpt» (`fulfill`) gjør et produkt om til inventar, fjerner
 mangelen, merker erstattet utstyr utgått, og arkiverer lista. Ingen angre (bekreftes
@@ -143,6 +144,8 @@ kun hvis du må tvinge full invalidasjon.
 
 - **Aldri** rediger en migrering som er kjørt mot remote. Legg ny `000N_*.sql`.
 - Vær additiv (`ADD COLUMN`, `CREATE TABLE IF NOT EXISTS`) så remote-data bevares.
+- **Kun struktur, ikke data.** Migreringer skal ikke seede/inserte data (DDL, ikke
+  DML). Unntak: data-bevarende `INSERT … SELECT` ved tabell-ombygging.
 - Etter ny migrering: `npm run db:migrate:local` (lokalt) og
   `npm run db:migrate` (remote, ved deploy).
 

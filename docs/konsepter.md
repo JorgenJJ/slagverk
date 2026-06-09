@@ -56,11 +56,12 @@ Flere navngitte lister samtidig (f.eks. «Prioritert 2026», «NM 2026»), hver 
 I tillegg vises en **overordnet sum** for alle mangler. Summene regnes ut i
 frontend fra prisene i `wishlist`, så de holder seg konsistente.
 
-**Listene viser konkret produkt.** En liste-linje peker på et **alternativ**
-(`list_items.option_id`) – det faktiske produktet som skal kjøpes (merke/modell/
-størrelse + pris + lenke), med en liten referanse «↳ for: \<mangel\>» tilbake til
-mangelen. «+ Legg til varer» lar deg velge mangel + hvilket alternativ (standard:
-billigste). Mangel uten alternativer vises som mangelen selv.
+**En liste-linje ER et produkt.** Strukturelt er `list_items` nøklet på
+`(list_id, option_id)` – linja *er* et alternativ (det faktiske produktet:
+merke/modell/størrelse + pris + lenke), med «↳ for: \<mangel\>» som tilbake-referanse.
+Det er **ikke mulig** å legge en bar mangel i en liste; mangelen må ha et konkret
+alternativ først. «+ Legg til varer» huker av **alternativer** (ikke mangler), og
+«+ Til liste» på et alternativ i Mangler-fanen legger akkurat det produktet inn.
 
 ## Oppfyllelse (kjøpt)
 

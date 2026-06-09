@@ -144,7 +144,8 @@ export async function listLists(env) {
   ).all();
   const { results: members } = await env.DB.prepare("SELECT * FROM list_items").all();
   const byList = {};
-  for (const m of members) (byList[m.list_id] ||= []).push({ wishlist_id: m.wishlist_id, qty: m.qty, option_id: m.option_id });
+  // En liste-linje ER et produkt (option_id); wishlist_id er tilbake-ref til mangelen.
+  for (const m of members) (byList[m.list_id] ||= []).push({ option_id: m.option_id, wishlist_id: m.wishlist_id, qty: m.qty });
   return lists.map((l) => ({ ...l, items: byList[l.id] || [] }));
 }
 
@@ -186,20 +187,23 @@ export async function deleteList(env, id) {
   return { before };
 }
 
-export async function addToList(env, listId, wishlistId, qty = 1, optionId = null) {
+// Legg et PRODUKT (et alternativ) i en liste. Ikke mulig å legge en mangel uten
+// produkt – option_id er påkrevd. Mangelen utledes av produktets wishlist_id.
+export async function addToList(env, listId, optionId, qty = 1) {
   if (!(await getList(env, listId))) throw new ValidationError("Fant ikke listen");
-  if (!(await getWishlist(env, wishlistId))) throw new ValidationError("Fant ikke mangelen");
+  const opt = await getOption(env, optionId);
+  if (!opt) throw new ValidationError("Fant ikke produktet (alternativet). En liste kan kun inneholde konkrete produkter.");
   await env.DB.prepare(
-    `INSERT INTO list_items (list_id, wishlist_id, qty, option_id) VALUES (?, ?, ?, ?)
-     ON CONFLICT(list_id, wishlist_id) DO UPDATE SET qty = excluded.qty, option_id = excluded.option_id`
-  ).bind(listId, wishlistId, Number(qty) || 1, optionId || null).run();
+    `INSERT INTO list_items (list_id, option_id, wishlist_id, qty) VALUES (?, ?, ?, ?)
+     ON CONFLICT(list_id, option_id) DO UPDATE SET qty = excluded.qty`
+  ).bind(listId, optionId, opt.wishlist_id, Number(qty) || 1).run();
   return { ok: true };
 }
 
-export async function removeFromList(env, listId, wishlistId) {
+export async function removeFromList(env, listId, optionId) {
   const res = await env.DB.prepare(
-    "DELETE FROM list_items WHERE list_id = ? AND wishlist_id = ?"
-  ).bind(listId, wishlistId).run();
+    "DELETE FROM list_items WHERE list_id = ? AND option_id = ?"
+  ).bind(listId, optionId).run();
   return { ok: !!res.meta.changes };
 }
 
@@ -271,6 +275,7 @@ export async function updateOption(env, id, b) {
 export async function deleteOption(env, id) {
   const before = await getOption(env, id);
   if (!before) return null;
+  await env.DB.prepare("DELETE FROM list_items WHERE option_id = ?").bind(id).run();
   await env.DB.prepare("DELETE FROM wishlist_options WHERE id = ?").bind(id).run();
   return { before };
 }

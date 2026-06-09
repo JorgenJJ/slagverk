@@ -2,7 +2,7 @@
 // Randaberg Musikkorps. Tema: regimental heritage (se styles.css).
 // Konvensjoner for hele appen: se /CLAUDE.md i repoet.
 
-const CATEGORIES = ["Trommer", "Melodisk", "Pauker", "Cymbaler", "Stativer", "Perkusjon"];
+const CATEGORIES = ["Trommer", "Melodisk", "Pauker", "Cymbaler", "Stativer", "Perkusjon", "Stikker og klubber"];
 const BRAND_CATS = ["Generelt", ...CATEGORIES];
 const PRIORITIES = ["høy", "middels", "lav"];
 const STATUSES = ["ok", "redusert", "ødelagt"];
@@ -108,8 +108,11 @@ function priceDisplay(w) {
   if (p.length) { const mn = Math.min(...p), mx = Math.max(...p); return mn === mx ? fmt(mn) : `${fmt(mn)} – ${fmt(mx)}`; }
   return fmt(w.estimated_price);
 }
-const optPriceFor = (w, optionId) => { if (optionId) { const o = (w.options || []).find((x) => x.id === optionId); if (o && o.price != null) return o.price; } return effPrice(w); };
-const listSum = (l) => (l.items || []).reduce((a, it) => { const w = wish(it.wishlist_id); return a + (w ? optPriceFor(w, it.option_id) * (it.qty || 1) : 0); }, 0);
+// Et produkt (alternativ) på tvers av alle mangler. Liste-linjer refererer til disse.
+const optionById = (oid) => { for (const w of state.wishlist) { const o = (w.options || []).find((x) => x.id === oid); if (o) return o; } return null; };
+const optionName = (o) => (o ? ([o.brand, o.model, o.size].filter(Boolean).join(" ") || "Alternativ") : "");
+// En liste-linje ER et produkt (option_id). Sum = produktets pris.
+const listSum = (l) => (l.items || []).reduce((a, it) => { const o = optionById(it.option_id); return a + (o && o.price != null ? o.price * (it.qty || 1) : 0); }, 0);
 const manglerTotal = () => state.wishlist.reduce((a, w) => a + effPrice(w), 0);
 const replacementFor = (invId) => state.wishlist.filter((w) => w.replaces_inventory_id === invId);
 const listsWith = (wishId) => state.lists.filter((l) => (l.items || []).some((it) => it.wishlist_id === wishId));
@@ -153,11 +156,9 @@ function downloadCSV(rows, filename) {
 }
 function exportListCSV(l) {
   const rows = [["Produkt", "For mangel", "Kategori", "Prioritet", "Antall", "Pris", "Sum", "Lenke"]];
-  (l.items || []).forEach((it) => { const w = wish(it.wishlist_id); if (!w) return;
-    const o = it.option_id ? (w.options || []).find((x) => x.id === it.option_id) : null;
-    const prod = o ? ([o.brand, o.model, o.size].filter(Boolean).join(" ") || "Alternativ") : "(ingen valgt)";
-    const p = optPriceFor(w, it.option_id);
-    rows.push([prod, w.type, w.category, PRI_LABEL[w.priority], it.qty || 1, p || "", p * (it.qty || 1), o ? o.link : ""]); });
+  (l.items || []).forEach((it) => { const o = optionById(it.option_id); if (!o) return; const w = wish(it.wishlist_id);
+    const p = o.price || 0;
+    rows.push([optionName(o), w ? w.type : "", w ? w.category : "", w ? PRI_LABEL[w.priority] : "", it.qty || 1, p || "", p * (it.qty || 1), o.link || ""]); });
   rows.push([]); rows.push(["", "", "", "", "", "Sum:", listSum(l), ""]);
   downloadCSV(rows, `innkjopsliste-${l.name.replace(/\s+/g, "-").toLowerCase()}.csv`);
   toast("Liste eksportert");
@@ -206,13 +207,14 @@ async function deleteWish(id) { await api("/wishlist/" + id, { method: "DELETE" 
 async function createList(item) { await api("/lists", { method: "POST", body: JSON.stringify(item) }); state.modal = null; await loadAll(); toast("Liste opprettet"); }
 async function saveList(item) { await api("/lists/" + item.id, { method: "PUT", body: JSON.stringify(item) }); state.modal = null; await loadAll(); toast("Lagret"); }
 async function deleteList(id) { await api("/lists/" + id, { method: "DELETE" }); state.modal = null; await loadAll(); toast("Liste slettet"); }
-async function toggleListItem(listId, wishId, on, optionId) {
-  if (on) await api(`/lists/${listId}/items`, { method: "POST", body: JSON.stringify({ wishlist_id: wishId, option_id: optionId || null }) });
-  else await api(`/lists/${listId}/items/${wishId}`, { method: "DELETE" });
+// Legg/fjern et PRODUKT (option) i en liste.
+async function toggleListItem(listId, optionId, on) {
+  if (on) await api(`/lists/${listId}/items`, { method: "POST", body: JSON.stringify({ option_id: optionId }) });
+  else await api(`/lists/${listId}/items/${optionId}`, { method: "DELETE" });
   await loadAll();
 }
-async function addToListChosen(listId, wishId, optionId) {
-  await api(`/lists/${listId}/items`, { method: "POST", body: JSON.stringify({ wishlist_id: wishId, option_id: optionId || null }) });
+async function addToListChosen(listId, optionId) {
+  await api(`/lists/${listId}/items`, { method: "POST", body: JSON.stringify({ option_id: optionId }) });
   state.modal = null; await loadAll(); toast("Lagt til i listen");
 }
 
@@ -274,8 +276,8 @@ async function undoActions() {
   for (const a of acts) {
     try {
       if (a.kind === "list_item") {
-        if (a.op === "add") await api(`/lists/${a.list_id}/items/${a.wishlist_id}`, { method: "DELETE" });
-        else await api(`/lists/${a.list_id}/items`, { method: "POST", body: JSON.stringify({ wishlist_id: a.wishlist_id }) });
+        if (a.op === "add") await api(`/lists/${a.list_id}/items/${a.option_id}`, { method: "DELETE" });
+        else await api(`/lists/${a.list_id}/items`, { method: "POST", body: JSON.stringify({ option_id: a.option_id }) });
         continue;
       }
       const coll = COLL[a.kind];
@@ -293,6 +295,7 @@ async function undoActions() {
 
 // ── Render ──
 let prevTab = null;
+let swipeIn = 0;   // 1 = ny fane skled inn fra høyre (neste), -1 = fra venstre (forrige)
 function render() {
   if (!state.code) { prevTab = null; return renderLogin(); }
   // Behold scroll-posisjon, og animér <main> KUN ved faktisk fanebytte – ellers
@@ -321,7 +324,22 @@ function render() {
     ${state.modal ? renderModal() : ""}
     ${state.filterSheet ? renderFilterSheet() : ""}
   `;
-  if (tabChanged) root.querySelector("main")?.classList.add("view-enter");
+  const mainEl = root.querySelector("main");
+  if (swipeIn && mainEl) {
+    // Sklid den nye fanen inn fra siden (sømløst etter sveip).
+    const from = swipeIn === 1 ? window.innerWidth : -window.innerWidth;
+    mainEl.style.transition = "none";
+    mainEl.style.transform = `translateX(${from}px)`;
+    mainEl.style.opacity = "0";
+    requestAnimationFrame(() => {
+      mainEl.style.transition = "transform .2s ease, opacity .2s ease";
+      mainEl.style.transform = "translateX(0)";
+      mainEl.style.opacity = "1";
+    });
+    swipeIn = 0;
+  } else if (tabChanged && mainEl) {
+    mainEl.classList.add("view-enter");
+  }
   wire();
   if (!tabChanged) window.scrollTo(0, scrollY);
 }
@@ -488,13 +506,13 @@ function viewOversikt() {
       <div class="stat click ${statActive("quality", "dårlig") ? "on" : ""}" data-stat="quality:dårlig"><b style="color:var(--warn)">${s.dårlig}</b><span>Dårlig kval.</span></div>
     </div>
     ${filterBar()}
-    ${retired.length ? `<div style="margin:-4px 0 12px"><button class="btn ghost sm" data-act="toggle-retired">⌫ Utgått utstyr (${retired.length})</button></div>` : ""}
     ${flat ? "" : `<div class="tree-hint">Klikk en komponent (f.eks. trommesett) for å se delene. Filtrer for å se alt flatt.</div>`}
     <table>
       <thead><tr><th>Type</th><th>Merke</th><th>Størrelse</th><th>Kategori</th><th>Tilstand</th><th>Kvalitet</th><th>Merknader</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="7" style="color:var(--muted)">Ingen treff.</td></tr>`}</tbody>
     </table>
-    <div class="cards">${cards || `<p style="color:var(--muted)">Ingen treff.</p>`}</div>`;
+    <div class="cards">${cards || `<p style="color:var(--muted)">Ingen treff.</p>`}</div>
+    ${retired.length ? `<div style="margin:14px 0 0"><button class="btn ghost sm" data-act="toggle-retired">⌫ Utgått utstyr (${retired.length})</button></div>` : ""}`;
 }
 
 // Utgått/erstattet utstyr (egen visning, bevart men ute av oversikten).
@@ -530,15 +548,14 @@ function viewMangler() {
           <div class="opt-links">${o.link ? `<a href="${esc(o.link)}" target="_blank" rel="noreferrer">🔗 Produkt</a>` : ""}
             <span class="link-chip" data-edit-opt="${w.id}|${o.id}">Rediger</span>
             ${o.link ? `<span class="link-chip" data-priceopt="${o.id}|${esc(o.link)}">⟳ Pris</span>` : ""}
-            <span class="link-chip" data-addtolist="${w.id}|${o.id}">+ Til liste</span>
+            <span class="link-chip" data-addtolist="${o.id}">+ Til liste</span>
             <span class="link-chip buy" data-buyopt="${w.id}|${o.id}">✓ Kjøpt</span></div>
         </div>
         <div class="opt-price price">${fmt(o.price)}</div>
-      </div>`).join("") : `<div class="opt empty">Ingen alternativer lagt inn ennå.</div>`}
+      </div>`).join("") : `<div class="opt empty">Ingen alternativer ennå. Legg til et konkret produkt for å kunne kjøpe / legge i liste.</div>`}
       <div class="opt-actions">
         <button class="btn ghost sm" data-edit-wish="${w.id}">✎ Rediger mangel (type, prioritet …)</button>
         <button class="btn ghost sm" data-addopt="${w.id}">+ Alternativ</button>
-        <button class="btn ghost sm" data-addtolist="${w.id}|">+ Legg mangel i liste</button>
         ${opts.length ? "" : `<button class="btn ghost sm" data-buywish="${w.id}">✓ Marker kjøpt</button>`}
       </div>
     </div>`;
@@ -610,7 +627,8 @@ function viewListArchive(archived) {
 }
 function listCard(l) {
   const sum = listSum(l);
-  const items = (l.items || []).map((it) => ({ it, w: wish(it.wishlist_id) })).filter((x) => x.w);
+  // Hver linje ER et produkt (option); mangelen er tilbake-ref.
+  const items = (l.items || []).map((it) => ({ it, o: optionById(it.option_id), w: wish(it.wishlist_id) })).filter((x) => x.o);
   const pct = l.budget ? Math.min(100, (sum / l.budget) * 100) : 0;
   return `<div class="list-card">
     <div class="head">
@@ -621,19 +639,15 @@ function listCard(l) {
       ${l.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${esc(l.notes)}</div>` : ""}
     </div>
     <div class="body">
-      ${items.length ? items.map(({ it, w }) => {
-        const o = it.option_id ? (w.options || []).find((x) => x.id === it.option_id) : null;
-        const prod = o ? ([o.brand, o.model, o.size].filter(Boolean).join(" ") || "Alternativ") : esc(w.type);
-        return `<div class="li">
-          <span class="tag ${w.priority}" style="font-size:10px">${PRI_LABEL[w.priority]}</span>
-          <div style="flex:1;min-width:0" class="click" data-li-edit="${w.id}">
-            <div class="li-prod">${o ? esc(prod) : esc(w.type)}${o && o.link ? ` <a href="${esc(o.link)}" target="_blank" rel="noreferrer" data-stoplink>🔗</a>` : ""}</div>
-            ${o ? `<div class="li-ref">↳ ${esc(w.type)}</div>` : `<div class="li-ref" style="color:var(--faint)">velg produkt via «+ Legg til varer»</div>`}
+      ${items.length ? items.map(({ it, o, w }) => `<div class="li">
+          ${w ? `<span class="tag ${w.priority}" style="font-size:10px">${PRI_LABEL[w.priority]}</span>` : ""}
+          <div style="flex:1;min-width:0" class="click" data-li-edit="${w ? w.id : ""}">
+            <div class="li-prod">${esc(optionName(o))}${o.link ? ` <a href="${esc(o.link)}" target="_blank" rel="noreferrer" data-stoplink>🔗</a>` : ""}</div>
+            <div class="li-ref">↳ ${w ? esc(w.type) : "mangel fjernet"}</div>
           </div>
-          <span class="price">${fmt(optPriceFor(w, it.option_id) * (it.qty || 1))}</span>
-          <span class="x" data-rmitem="${l.id}|${w.id}" title="Fjern">✕</span>
-        </div>`;
-      }).join("") : `<div class="empty">Tom – legg til mangler.</div>`}
+          <span class="price">${fmt((o.price || 0) * (it.qty || 1))}</span>
+          <span class="x" data-rmitem="${l.id}|${o.id}" title="Fjern">✕</span>
+        </div>`).join("") : `<div class="empty">Tom – legg til produkter (alternativer fra mangler).</div>`}
     </div>
     <div class="foot">
       <button class="btn ghost sm" data-add-items="${l.id}">+ Legg til varer</button>
@@ -652,7 +666,7 @@ function viewMerker() {
   return `
     <div class="toolbar">
       <span class="eyebrow">Godkjente merker</span>
-      <span style="color:var(--muted);font-size:13px">Foretrukne leverandører – vi ønsker kun kvalitetsprodukter.</span>
+      <span style="color:var(--muted);font-size:13px">Foretrukne leverandører</span>
       <span class="spacer"></span>
       <button class="btn" data-act="add-brand">+ Nytt merke</button>
     </div>
@@ -689,7 +703,7 @@ function viewGenerer() {
       <div class="report-head">
         <div>
           <h2>Slagverksoversikt Randaberg Musikkorps</h2>
-          <div class="date">Sist oppdatert: ${date} · ${included.length} av ${state.inventory.length} komponenter</div>
+          <div class="date">Sist oppdatert: ${date}</div>
         </div>
         <img class="report-logo" src="/randaberg-logo-red.png" alt="Randaberg Musikkorps" onerror="this.style.display='none'" />
       </div>
@@ -784,18 +798,19 @@ function modalListForm(m) {
 }
 function modalListItems(m) {
   const l = byId(state.lists, m.listId); if (!l) { state.modal = null; return ""; }
-  const byWish = {}; (l.items || []).forEach((it) => { byWish[it.wishlist_id] = it; });
+  const inList = new Set((l.items || []).map((it) => it.option_id));
+  // Velg PRODUKTER (alternativer). Hver mangel viser sine alternativer; haker man av
+  // legges DET produktet i lista. Mangler uten alternativ kan ikke legges til.
   return `<div class="modal-bg" data-act="close-modal"><div class="modal" data-stop>
-    <h3>Varer i «${esc(l.name)}»</h3>
-    <p style="color:var(--muted);font-size:12.5px;margin:0 0 10px">Velg mangler, og hvilket konkret produkt som skal kjøpes.</p>
+    <h3>Produkter i «${esc(l.name)}»</h3>
+    <p style="color:var(--muted);font-size:12.5px;margin:0 0 10px">En liste inneholder konkrete produkter. Huk av alternativene som skal kjøpes.</p>
     <div class="picklist">${state.wishlist.map((w) => {
-      const opts = w.options || []; const cur = byWish[w.id];
-      const curOpt = cur ? cur.option_id : (opts[0] ? opts[0].id : "");
-      return `<label><input type="checkbox" data-toggleitem="${l.id}|${w.id}" ${cur ? "checked" : ""}>
-        <span style="flex:1;min-width:0">${esc(w.type)} <span style="color:var(--faint);font-size:12px">${esc(w.category)}</span></span>
-        ${opts.length
-          ? `<select data-listopt="${w.id}" style="width:auto;max-width:55%">${opts.map((o) => `<option value="${esc(o.id)}" ${curOpt === o.id ? "selected" : ""}>${esc([o.brand, o.model].filter(Boolean).join(" ") || "Alternativ")} – ${fmt(o.price)}</option>`).join("")}</select>`
-          : `<span class="price">${priceDisplay(w)}</span>`}</label>`;
+      const opts = w.options || [];
+      const head = `<div class="pick-mangel">${esc(w.type)} <span style="color:var(--faint);font-size:11px">${esc(w.category)}</span></div>`;
+      if (!opts.length) return head + `<div class="pick-empty">Ingen alternativ ennå – legg til et i Mangler-fanen først.</div>`;
+      return head + opts.map((o) => `<label class="pick-opt"><input type="checkbox" data-toggleitem="${l.id}|${o.id}" ${inList.has(o.id) ? "checked" : ""}>
+        <span style="flex:1;min-width:0">${esc(optionName(o))}</span>
+        <span class="price">${fmt(o.price)}</span></label>`).join("");
     }).join("")}</div>
     <div class="actions"><span class="spacer"></span><button class="btn" data-act="close-modal">Ferdig</button></div>
   </div></div>`;
@@ -824,10 +839,10 @@ function modalOptionForm(m) {
   </div></div>`;
 }
 function modalChooseList(m) {
-  const w = wish(m.wishId);
+  const o = optionById(m.optionId); const active = state.lists.filter((l) => !l.archived_at);
   return `<div class="modal-bg" data-act="close-modal"><div class="modal" data-stop>
-    <h3>Legg «${esc(w?.type || "")}» i liste</h3>
-    ${state.lists.length ? `<div class="picklist">${state.lists.map((l) => `<label data-choose-list="${l.id}"><span style="flex:1">${esc(l.name)}</span><span class="price">${fmt(listSum(l))}</span></label>`).join("")}</div>`
+    <h3>Legg «${esc(optionName(o))}» i liste</h3>
+    ${active.length ? `<div class="picklist">${active.map((l) => `<label data-choose-list="${l.id}"><span style="flex:1">${esc(l.name)}</span><span class="price">${fmt(listSum(l))}</span></label>`).join("")}</div>`
       : `<p style="color:var(--muted)">Du har ingen lister ennå.</p>`}
     <div class="actions"><button class="btn ghost sm" data-act="add-list">+ Ny liste</button><span class="spacer"></span><button class="btn ghost" data-act="close-modal">Lukk</button></div>
   </div></div>`;
@@ -890,7 +905,7 @@ function wire() {
   q("[data-addopt]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); openModal({ kind: "option-form", wishId: el.dataset.addopt, item: { brand: "", model: "", size: "", info: "", link: "", price: "" } }); });
   q("[data-edit-opt]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [wid, oid] = splitFirst(el.dataset.editOpt); const w = wish(wid); const o = (w.options || []).find((x) => x.id === oid); openModal({ kind: "option-form", wishId: wid, item: { ...o } }); });
   q("[data-priceopt]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [oid, link] = splitFirst(el.dataset.priceopt); fetchPriceUrl(link, (p) => api(`/options/${oid}`, { method: "PUT", body: JSON.stringify({ price: p }) })); });
-  q("[data-addtolist]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [wid, oid] = splitFirst(el.dataset.addtolist); openModal({ kind: "choose-list", wishId: wid, optionId: oid || null }); });
+  q("[data-addtolist]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); openModal({ kind: "choose-list", optionId: el.dataset.addtolist }); });
 
   q("[data-goto-wish]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); state.tab = "mangler"; render(); });
   q("[data-goto-inv]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); state.tab = "oversikt"; render(); });
@@ -901,7 +916,7 @@ function wire() {
   q("[data-add-items]").forEach((el) => el.onclick = () => openModal({ kind: "list-items", listId: el.dataset.addItems }));
   q("[data-export-list]").forEach((el) => el.onclick = () => exportListCSV(byId(state.lists, el.dataset.exportList)));
   q("[data-del-list]").forEach((el) => el.onclick = () => { if (confirm("Slette listen?")) deleteList(el.dataset.delList); });
-  q("[data-rmitem]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [lid, wid] = splitFirst(el.dataset.rmitem); toggleListItem(lid, wid, false); });
+  q("[data-rmitem]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [lid, oid] = splitFirst(el.dataset.rmitem); toggleListItem(lid, oid, false); });
   // Oppfyllelse / arkiv
   q("[data-buyopt]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [wid, oid] = splitFirst(el.dataset.buyopt); fulfillWish(wid, oid); });
   q("[data-buywish]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); fulfillWish(el.dataset.buywish, null); });
@@ -909,18 +924,9 @@ function wire() {
   q("[data-unretire]").forEach((el) => el.onclick = () => setRetired(el.dataset.unretire, false));
   q("[data-del-inv]").forEach((el) => el.onclick = () => { if (confirm("Slette utgått utstyr permanent?")) deleteInventory(el.dataset.delInv); });
   q("[data-unarchive]").forEach((el) => el.onclick = () => setArchived(el.dataset.unarchive, false));
-  q("[data-li-edit]").forEach((el) => el.onclick = (e) => { if (e.target.closest("[data-rmitem],a,[data-stoplink]")) return; openModal({ kind: "edit-wish", item: { ...wish(el.dataset.liEdit) } }); });
-  q("[data-toggleitem]").forEach((cb) => cb.onchange = () => {
-    const [lid, wid] = splitFirst(cb.dataset.toggleitem);
-    const selEl = root.querySelector(`[data-listopt="${wid}"]`);
-    toggleListItem(lid, wid, cb.checked, selEl ? (selEl.value || null) : null);
-  });
-  q("[data-listopt]").forEach((sel) => sel.onchange = () => {
-    const wid = sel.dataset.listopt; const lid = state.modal && state.modal.listId;
-    const cb = root.querySelector(`[data-toggleitem="${lid}|${wid}"]`);
-    if (lid && cb && cb.checked) toggleListItem(lid, wid, true, sel.value || null); // upsert med valgt produkt
-  });
-  q("[data-choose-list]").forEach((el) => el.onclick = () => addToListChosen(el.dataset.chooseList, state.modal.wishId, state.modal.optionId));
+  q("[data-li-edit]").forEach((el) => el.onclick = (e) => { if (!el.dataset.liEdit || e.target.closest("[data-rmitem],a,[data-stoplink]")) return; openModal({ kind: "edit-wish", item: { ...wish(el.dataset.liEdit) } }); });
+  q("[data-toggleitem]").forEach((cb) => cb.onchange = () => { const [lid, oid] = splitFirst(cb.dataset.toggleitem); toggleListItem(lid, oid, cb.checked); });
+  q("[data-choose-list]").forEach((el) => el.onclick = () => addToListChosen(el.dataset.chooseList, state.modal.optionId));
 
   // Merker
   q("[data-edit-brand]").forEach((el) => el.onclick = () => openModal({ kind: "brand-form", item: { ...byId(state.brands, el.dataset.editBrand) } }));
@@ -1016,8 +1022,75 @@ function initGlobalListeners() {
   }, 60));
 }
 
+// ── Sveip mellom faner (mobil) ──
+// touch-action: pan-y (CSS) lar nettleser scrolle vertikalt; vi fanger horisontalt.
+// Retnings-lås + høy terskel (~25% bredde) hindrer utløsning ved uhell.
+function initSwipeNav() {
+  const TAB_KEYS = TABS.map((t) => t[0]);
+  let sx = 0, sy = 0, dx = 0, dy = 0, active = false, locked = false, mainEl = null, fromIdx = 0;
+  const LOCK = 12;
+
+  const blocked = (t) =>
+    !state.code || state.chatOpen || state.modal || state.filterSheet || state.openFilter ||
+    window.innerWidth > 720 ||
+    (t.closest && t.closest("nav.tabs, #dock, .dock-scrim, .modal-bg, .filter-pop, select, input, textarea, a, button, [data-stop]"));
+
+  const resetMain = (anim) => {
+    if (!mainEl) return;
+    mainEl.style.transition = anim ? "transform .2s ease, opacity .2s ease" : "none";
+    mainEl.style.transform = "translateX(0)"; mainEl.style.opacity = "1";
+  };
+
+  root.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1 || blocked(e.target)) { active = false; return; }
+    mainEl = root.querySelector("main"); if (!mainEl) return;
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = dy = 0; active = true; locked = false;
+    fromIdx = TAB_KEYS.indexOf(state.tab);
+  }, { passive: true });
+
+  root.addEventListener("touchmove", (e) => {
+    if (!active) return;
+    dx = e.touches[0].clientX - sx; dy = e.touches[0].clientY - sy;
+    if (!locked) {
+      if (Math.abs(dx) < LOCK && Math.abs(dy) < LOCK) return;
+      if (Math.abs(dy) >= Math.abs(dx)) { active = false; return; } // vertikalt → la scroll skje
+      locked = true;
+    }
+    // Demp ved endene (ingen fane å gå til)
+    const atEnd = (dx < 0 && fromIdx >= TAB_KEYS.length - 1) || (dx > 0 && fromIdx <= 0);
+    const d = atEnd ? dx * 0.3 : dx;
+    mainEl.style.transition = "none";
+    mainEl.style.transform = `translateX(${d}px)`;
+    mainEl.style.opacity = String(Math.max(0.55, 1 - Math.abs(d) / window.innerWidth));
+  }, { passive: true });
+
+  root.addEventListener("touchend", () => {
+    if (!active) return; active = false;
+    if (!locked || !mainEl) return;
+    const threshold = Math.max(80, window.innerWidth * 0.25);
+    const dir = dx < 0 ? 1 : -1;                  // 1 = neste, -1 = forrige
+    const target = fromIdx + dir;
+    if (Math.abs(dx) >= threshold && target >= 0 && target < TAB_KEYS.length) {
+      const W = window.innerWidth;
+      mainEl.style.transition = "transform .16s ease, opacity .16s ease";
+      mainEl.style.transform = `translateX(${dir === 1 ? -W : W}px)`;  // sklid gammel ut
+      mainEl.style.opacity = "0";
+      const el = mainEl;
+      setTimeout(() => {
+        if (root.querySelector("main") === el) { /* uendret */ }
+        state.tab = TAB_KEYS[target]; state.modal = null; state.openFilter = null;
+        state.retiredView = false; state.listArchive = false;
+        swipeIn = dir; render();
+      }, 150);
+    } else {
+      resetMain(true);
+    }
+  }, { passive: true });
+}
+
 // ── Boot ──
 initGlobalListeners();
+initSwipeNav();
 (async function boot() {
   if (state.code) { try { await loadAll(); } catch { logout(); } }
   else render();
