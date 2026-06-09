@@ -108,6 +108,10 @@ Full tabell-spec: [docs/datamodell-og-api.md](docs/datamodell-og-api.md).
   - Skjema bruker `enum` for kategori/status/kvalitet/prioritet. Oppdater/slett tar
     en `ref` = id ELLER navn/type; `resolveRef()` slår opp riktig rad og kaster en
     «flere matcher»-feil (som modellen kan stille oppfølgingsspørsmål ut fra) ved tvetydighet.
+  - Promten ber modellen skrive **ren tekst** (ingen markdown – bobla rendrer rått,
+    `stripMd()` i frontend er sikkerhetsnett), være **nøyaktig** (kun data, skill
+    inventar fra mangler), og **alltid lenke til produkter** hos de foretrukne
+    butikkene (env `PREFERRED_STORES`, delt med prisinnhentingens host-whitelist).
 
 ## Tema / design
 
@@ -118,7 +122,8 @@ Full tabell-spec: [docs/datamodell-og-api.md](docs/datamodell-og-api.md).
   `randaberg-logo-white.png` (hvit, for rød bakgrunn) og `-red.png` (rød, for lys
   bakgrunn), generert med `node scripts/make-logo-variants.js`. Bruk
   `logo(size, variant)` med `"full" | "white" | "red"` (SVG-skjold som fallback).
-  PWA-ikon `icon-192/512.png` genereres fra logoen med sharp.
+  Innlogging bruker `red`-varianten. PWA-ikon `icon-192/512.png` lages med
+  `node scripts/make-icons.js` (hvit krest på heldekkende rødt – ingen hvite kanter).
 
 ## Service worker
 

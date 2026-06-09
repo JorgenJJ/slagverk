@@ -80,8 +80,13 @@ Erfaring fra musikk-miljø.no:
   masseimport av hele katalogen er ikke mulig med enkel fetch. Derfor: pris per
   vare via lenke, ikke katalog-skraping.
 
-Endepunktet er låst til godkjente domener (`ALLOWED_HOSTS`) for å hindre at det
-misbrukes som åpen proxy.
+Endepunktet er låst til **foretrukne butikker** (env `PREFERRED_STORES`, komma-
+separert, standard musikk-miljø) for å hindre at det misbrukes som åpen proxy.
+Samme liste styrer hvor AI-chatten skal lenke: den er bedt om å **alltid legge ved
+en produktlenke** (`link`) til en foretrukken butikk når den legger inn alternativer
+eller foreslår produkter – og bruke en søkelenke (`/search?q=…`) når den ikke kjenner
+den eksakte produktsiden (siden modellen ikke kan surfe). Legg til flere butikker
+ved å utvide `PREFERRED_STORES`.
 
 ## AI-assistenten
 

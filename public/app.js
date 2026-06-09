@@ -29,6 +29,13 @@ const root = document.getElementById("root");
 const fmt = (n) => (n || n === 0 ? Number(n).toLocaleString("nb-NO") + " kr" : "–");
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const byId = (arr, id) => arr.find((x) => x.id === id);
+// Fjern vanlig markdown som ikke rendres i appen (sikkerhetsnett – modellen er
+// også bedt om å skrive ren tekst). Stripper **fet**, __fet__, `kode`, #overskrift.
+const stripMd = (s) => String(s ?? "")
+  .replace(/\*\*(.+?)\*\*/g, "$1")
+  .replace(/__(.+?)__/g, "$1")
+  .replace(/`([^`]+)`/g, "$1")
+  .replace(/^\s{0,3}#{1,6}\s+/gm, "");
 
 // Ekte Randaberg-logo (public/randaberg-logo.png) med innebygd SVG-skjold som
 // fallback dersom bildet ikke kan lastes.
@@ -286,7 +293,7 @@ function render() {
 function renderLogin() {
   root.innerHTML = `
     <div class="login-wrap"><div class="login-card">
-      ${logo(64, "full")}
+      ${logo(64, "red")}
       <h1>Slagverksoversikt</h1>
       <p>Randaberg Musikkorps</p>
       <div class="field"><label>Tilgangskode</label><input id="code" type="password" placeholder="••••••" autofocus /></div>
@@ -355,7 +362,7 @@ function renderFilterSheet() {
 }
 
 // ── Oversikt (med gruppering av like rader) ──
-function groupKey(i) { return [i.type, i.brand, i.category, i.status, i.quality, i.notes].join(""); }
+function groupKey(i) { return [i.type, i.brand, i.model, i.size, i.category, i.status, i.quality, i.notes].join(""); }
 function viewOversikt() {
   const all = state.inventory;
   const s = {
@@ -372,6 +379,7 @@ function viewOversikt() {
   const replChip = (i) => { const r = replacementFor(i.id); return r.length ? `<span class="link-chip repl" data-goto-wish="${esc(r[0].id)}" title="Planlagt erstatning">↪ ${esc(r[0].type)}</span>` : ""; };
   const cells = (i) => `
     <td style="color:var(--muted)">${esc(i.brand) || "–"}</td>
+    <td class="mono">${esc(i.size) || "–"}</td>
     <td><span class="mono">${esc(i.category)}</span></td>
     <td><span class="tag ${i.status}">${STATUS_LABEL[i.status]}</span></td>
     <td class="q-${i.quality}" style="font-weight:600">${esc(i.quality)}</td>
@@ -390,7 +398,7 @@ function viewOversikt() {
     const g = gmap.get(k); const i = g[0]; const open = !!state.expandedGroups[k]; const ek = encodeURIComponent(k);
     const cardInner = (it, head) => `
       <div class="row1">
-        <div><div class="type">${esc(it.type)} ${head && g.length > 1 ? `<span class="count">×${g.length}</span>` : ""}</div><div class="meta">${esc(it.brand) || ""} ${esc(it.category)}</div></div>
+        <div><div class="type">${esc(it.type)} ${head && g.length > 1 ? `<span class="count">×${g.length}</span>` : ""}</div><div class="meta">${[esc(it.brand), esc(it.size), esc(it.category)].filter(Boolean).join(" · ")}</div></div>
         <span class="tag ${it.status}">${STATUS_LABEL[it.status]}</span>
       </div>
       <div class="meta">Kvalitet: <span class="q-${it.quality}" style="font-weight:600">${esc(it.quality)}</span></div>
@@ -411,8 +419,8 @@ function viewOversikt() {
     </div>
     ${filterBar()}
     <table>
-      <thead><tr><th>Type</th><th>Merke</th><th>Kategori</th><th>Status</th><th>Kvalitet</th><th>Merknader</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="6" style="color:var(--muted)">Ingen treff med valgte filtre.</td></tr>`}</tbody>
+      <thead><tr><th>Type</th><th>Merke</th><th>Størrelse</th><th>Kategori</th><th>Status</th><th>Kvalitet</th><th>Merknader</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="7" style="color:var(--muted)">Ingen treff med valgte filtre.</td></tr>`}</tbody>
     </table>
     <div class="cards">${cards || `<p style="color:var(--muted)">Ingen treff.</p>`}</div>`;
 }
@@ -562,12 +570,22 @@ function viewGenerer() {
       <button class="btn brass" data-act="download-report">⬇ Last ned</button>
     </div>
     <div class="report" id="report">
+      <img class="report-logo" src="/randaberg-logo-red.png" alt="Randaberg Musikkorps" onerror="this.style.display='none'" />
       <h2>Slagverksoversikt Randaberg Musikkorps</h2>
       <div class="date">Sist oppdatert: ${date} · ${included.length} av ${state.inventory.length} enheter</div>
       <div class="grid2">
-        ${cats.map((c) => `<div class="cat"><h4>${c}</h4>
-          ${included.filter((i) => i.category === c).map((i) => { const det = [i.brand, i.notes].filter(Boolean).join(" · "); const qd = i.quality !== "bra" && i.quality !== "ukjent" ? ` (${i.quality})` : ""; return `<div class="item"><span>${esc(i.type)}${qd}</span><span class="det">${esc(det)}</span></div>`; }).join("")}
-        </div>`).join("")}
+        ${cats.map((c) => {
+          const groups = []; const gm = new Map();
+          included.filter((i) => i.category === c).forEach((i) => {
+            const k = [i.type, i.brand, i.model, i.size].join("|");
+            if (!gm.has(k)) { gm.set(k, { i, n: 0 }); groups.push(k); }
+            gm.get(k).n++;
+          });
+          return `<div class="cat"><h4>${c}</h4>
+            ${groups.map((k) => { const { i, n } = gm.get(k); const det = [i.brand, i.model, i.size].filter(Boolean).join(" · ");
+              return `<div class="item"><span>${esc(i.type)}${n > 1 ? ` <span class="cnt">×${n}</span>` : ""}</span><span class="det">${esc(det)}</span></div>`; }).join("")}
+          </div>`;
+        }).join("")}
       </div>
       <div class="footer-note"><b>NB:</b> Randaberg Musikkorps jobber med å oppgradere slagverkutstyret. Lista inneholder utstyr med varierende standard. Alt som er oppgitt er fullt mulig å bruke, men kan være slitt / av lavere kvalitet. Ta gjerne kontakt på jorgen.jarnes@gmail.com ved spørsmål om utstyret.</div>
     </div>`;
@@ -577,7 +595,14 @@ function reportText() {
   const pass = (i) => (minS === "Alle" || STATUS_RANK[i.status] >= STATUS_RANK[minS]) && (minQ === "Alle" || QUALITY_RANK[i.quality] >= QUALITY_RANK[minQ]);
   const included = state.inventory.filter(pass);
   let out = `Slagverksoversikt Randaberg Musikkorps\nSist oppdatert: ${new Date().toLocaleDateString("nb-NO")}\n`;
-  CATEGORIES.forEach((c) => { const items = included.filter((i) => i.category === c); if (!items.length) return; out += `\n${c}\n`; items.forEach((i) => { const det = [i.brand, i.notes].filter(Boolean).join(" · "); out += `  ${i.type}${det ? "  –  " + det : ""}\n`; }); });
+  CATEGORIES.forEach((c) => {
+    const items = included.filter((i) => i.category === c); if (!items.length) return;
+    const groups = []; const gm = new Map();
+    items.forEach((i) => { const k = [i.type, i.brand, i.model, i.size].join("|"); if (!gm.has(k)) { gm.set(k, { i, n: 0 }); groups.push(k); } gm.get(k).n++; });
+    out += `\n${c}\n`;
+    groups.forEach((k) => { const { i, n } = gm.get(k); const det = [i.brand, i.model, i.size].filter(Boolean).join(" · ");
+      out += `  ${i.type}${n > 1 ? ` ×${n}` : ""}${det ? "  –  " + det : ""}\n`; });
+  });
   return out;
 }
 
@@ -603,6 +628,7 @@ function modalEntity(m) {
   const body = isInv ? `
     ${txt("Type", "type")}
     <div class="field"><label>Merke</label><input data-f="brand" list="brandlist" value="${esc(item.brand ?? "")}" />${brandList}</div>
+    ${txt("Modell", "model")}${txt("Størrelse", "size")}
     ${sel("Kategori", "category", CATEGORIES)}${sel("Status", "status", STATUSES)}${sel("Kvalitet", "quality", QUALITIES)}
     ${txt("Merknader", "notes")}` : `
     ${txt("Type", "type")}${sel("Kategori", "category", CATEGORIES)}${sel("Prioritet", "priority", PRIORITIES)}
@@ -688,7 +714,7 @@ function renderDock() {
           <button class="close" data-act="close-chat">×</button></div>
         <div class="chat-log" id="chatLog">
           ${state.chat.length === 0 ? `<div class="msg ai"><div class="bubble">Hei! Si fra hva du oppdager – f.eks. «xylofonen er ødelagt», «legg til en ny tamburin», eller «lag en innkjøpsliste for NM med paukene». Jeg fikser det.</div></div>` : ""}
-          ${state.chat.map((m) => `<div class="msg ${m.role === "user" ? "user" : "ai"}"><div class="bubble">${esc(m.content)}</div></div>`).join("")}
+          ${state.chat.map((m) => `<div class="msg ${m.role === "user" ? "user" : "ai"}"><div class="bubble">${esc(m.role === "user" ? m.content : stripMd(m.content))}</div></div>`).join("")}
           ${state.chatBusy ? `<div class="msg ai"><div class="bubble">…</div></div>` : ""}
         </div>
         <div class="chat-input"><input id="chatInput" placeholder="Skriv en melding…" ${state.chatBusy ? "disabled" : ""} /><button class="btn" data-act="send-chat">Send</button></div>

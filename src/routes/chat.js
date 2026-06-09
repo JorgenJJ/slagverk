@@ -1,4 +1,4 @@
-import { json, err, requireAuth } from "../helpers.js";
+import { json, err, requireAuth, preferredStores } from "../helpers.js";
 import * as db from "../db.js";
 
 // ── AI-assistent (tool use) ──
@@ -38,10 +38,11 @@ const TOOLS = [
   { name: "add_inventory", description: "Legg til et utstyr vi eier. Eks: «legg til en triangel i perkusjon».",
     input_schema: { type: "object", required: ["type", "category"], properties: {
       type: str("instrumentnavn, f.eks. «Skarptromme»"), category: enm(CAT), brand: str("produsent"),
+      model: str("modell, f.eks. «Professional Generation II»"), size: str("størrelse, f.eks. «36\"»"),
       status: enm(STAT, "standard ok"), quality: enm(QUAL, "standard ukjent"), notes: str() } } },
   { name: "update_inventory", description: "Endre et utstyr, f.eks. status/kvalitet. Eks: «xylofonen er ødelagt».",
     input_schema: { type: "object", required: ["ref"], properties: {
-      ref: ref("utstyret"), type: str(), brand: str(), category: enm(CAT), status: enm(STAT), quality: enm(QUAL), notes: str() } } },
+      ref: ref("utstyret"), type: str(), brand: str(), model: str(), size: str(), category: enm(CAT), status: enm(STAT), quality: enm(QUAL), notes: str() } } },
   { name: "delete_inventory", description: "Slett et utstyr.",
     input_schema: { type: "object", required: ["ref"], properties: { ref: ref("utstyret") } } },
 
@@ -262,10 +263,22 @@ export async function chat(request, env) {
 
   const [inv, wish, lists, brands] = await Promise.all([db.listInventory(env), db.listWishlist(env), db.listLists(env), db.listBrands(env)]);
   const today = new Date().toISOString().slice(0, 10);
+  const stores = preferredStores(env);
   const examples = FEWSHOT.length
     ? "EKSEMPLER (melding → hva du bør gjøre)\n" + FEWSHOT.map((e) => `- «${e.user}» → ${e.action}`).join("\n") + "\n\n"
     : "";
   const system = `Du er assistenten til slagverkseksjonen i Randaberg Musikkorps. Svar kort og på norsk.
+
+FORMAT: Skriv REN TEKST uten markdown. Ikke bruk **fet**, *kursiv*, #overskrifter,
+kodeblokker eller punktlister med «*»/«-»/«1.» – appen viser teksten akkurat som
+den er, så slike tegn vises bokstavelig. Trenger du å liste opp, skriv det på korte
+linjer eller skill med komma.
+
+NØYAKTIGHET: Bruk KUN dataene nederst. Ikke finn på utstyr, mangler, id-er, priser
+eller koblinger – les av eksakt det som står. Inventar (det vi EIER) og mangler
+(det vi ØNSKER/trenger) er to ULIKE lister: ikke bland dem og ikke tell dem sammen.
+På «hvor mange X har vi» teller du KUN i Inventar. Oppgi tall og navn nøyaktig slik
+de står; er du usikker, si det heller enn å gjette.
 Dagens dato: ${today}.
 
 OPPGAVE
@@ -275,6 +288,16 @@ og slette inventar, mangler, alternativer, innkjøpslister og merker. Ikke be om
 bekreftelse for klare forespørsler – gjør endringen og fortell kort hva du gjorde.
 Når du oppdaterer/sletter/kobler kan du oppgi id fra DATA, eller bare navnet/typen
 (f.eks. «Majestic», «xylofonen») – appen slår opp riktig rad og spør hvis flere matcher.
+
+BUTIKKER OG LENKER
+Foretrukne butikker å sjekke for produkter og priser: ${stores.join(", ")}.
+Når du legger inn et alternativ (add_option), en mangel med et konkret produkt,
+eller foreslår/nevner et produkt, ta ALLTID med en lenke i link-feltet til produktet
+hos en foretrukken butikk. Du kan IKKE surfe på nett – ikke dikt opp en spesifikk
+produkt-URL. Kjenner du den nøyaktige produktsiden, bruk den; ellers bruk en
+søkelenke i butikken på produktnavnet, f.eks.
+https://www.musikk-miljo.no/search?q=pauke+adams (mellomrom = «+»). Brukeren kan
+trykke «Hent pris» etterpå for å hente faktisk pris fra lenken.
 
 DATAMODELL
 - Inventar = utstyr vi eier (type, merke, kategori, status, kvalitet, merknader).

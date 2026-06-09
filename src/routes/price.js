@@ -1,7 +1,7 @@
-import { json, err, requireAuth } from "../helpers.js";
+import { json, err, requireAuth, allowedHosts } from "../helpers.js";
 
-// Tillatte leverandør-domener (hindrer at endepunktet brukes som åpen proxy/SSRF).
-const ALLOWED_HOSTS = ["musikk-miljo.no"];
+// Tillatte leverandør-domener utledes fra de foretrukne butikkene (PREFERRED_STORES)
+// – hindrer at endepunktet brukes som åpen proxy/SSRF.
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
            "(KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -34,8 +34,9 @@ export async function price(request, env) {
   try { url = new URL(b.url); } catch { return err("Ugyldig URL"); }
   if (url.protocol !== "https:") return err("Kun https-lenker støttes");
   const host = url.hostname.replace(/^www\./, "");
-  if (!ALLOWED_HOSTS.some((h) => host === h || host.endsWith("." + h))) {
-    return err(`Pris kan kun hentes fra: ${ALLOWED_HOSTS.join(", ")}`, 400);
+  const hosts = allowedHosts(env);
+  if (!hosts.some((h) => host === h || host.endsWith("." + h))) {
+    return err(`Pris kan kun hentes fra: ${hosts.join(", ")}`, 400);
   }
 
   let resp;

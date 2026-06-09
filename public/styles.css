@@ -261,15 +261,18 @@ tr.click:hover { background: #fbf6ec; }
 }
 .gen-controls .field { margin: 0; min-width: 150px; flex: 1; }
 .report {
+  position: relative;
   margin-top: 18px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
   padding: 34px 38px; box-shadow: var(--shadow); color: #1a1a1a;
 }
-.report h2 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin: 0 0 2px; }
+.report-logo { position: absolute; top: 28px; right: 32px; width: 80px; height: auto; }
+.report h2 { font-family: var(--font-display); font-weight: 600; font-size: 22px; margin: 0 0 2px; padding-right: 92px; }
 .report .date { color: #888; font-size: 13px; margin-bottom: 22px; }
 .report .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 26px 40px; }
-.report .cat h4 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; border-bottom: 2px solid var(--ink); padding-bottom: 4px; margin: 0 0 10px; }
+.report .cat h4 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; border-bottom: 1px solid var(--line-2); padding-bottom: 4px; margin: 0 0 10px; }
 .report .cat .item { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 14px; }
 .report .cat .item .det { color: #777; font-size: 13px; text-align: right; }
+.report .cat .item .cnt { color: #999; font-size: 12.5px; }
 .report .footer-note { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12.5px; color: #666; line-height: 1.5; }
 @media (max-width: 600px) { .report { padding: 22px; } .report .grid2 { grid-template-columns: 1fr; gap: 18px; } }
 

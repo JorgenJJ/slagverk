@@ -41,3 +41,18 @@ export function newId(prefix) {
     : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
   return `${prefix}-${uuid}`;
 }
+
+// Foretrukne butikker (konfig). Komma-separert i env PREFERRED_STORES; standard
+// musikk-miljø. Brukes både av prisinnhenting (hvilke verter er tillatt) og av
+// AI-promten (hvor den skal lenke til produkter).
+export function preferredStores(env) {
+  return (env.PREFERRED_STORES || "https://www.musikk-miljo.no/")
+    .split(",").map((s) => s.trim()).filter(Boolean);
+}
+export function allowedHosts(env) {
+  const hosts = [];
+  for (const u of preferredStores(env)) {
+    try { hosts.push(new URL(u).hostname.replace(/^www\./, "")); } catch { /* hopp over ugyldig */ }
+  }
+  return hosts.length ? hosts : ["musikk-miljo.no"];
+}

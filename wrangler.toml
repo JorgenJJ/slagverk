@@ -24,6 +24,9 @@ database_id = "1d541466-262e-4b69-a8bd-090649a78900"
 [vars]
 AI_PROVIDER = "anthropic"
 AI_MODEL    = "claude-haiku-4-5-20251001"
+# Foretrukne butikker (komma-separert). Styrer hvor AI lenker, og hvilke domener
+# prisinnhenting tillater. Legg til flere ved behov.
+PREFERRED_STORES = "https://www.musikk-miljo.no/"
 
 # For Google Gemini i stedet: kommenter ut de tre over, fjern kommentar her,
 # og sett AI_API_KEY til en Google-nøkkel.

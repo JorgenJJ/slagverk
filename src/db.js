@@ -8,7 +8,7 @@ import { newId } from "./helpers.js";
 
 export class ValidationError extends Error {}
 
-const INV_FIELDS  = ["type", "brand", "category", "status", "quality", "notes"];
+const INV_FIELDS  = ["type", "brand", "model", "size", "category", "status", "quality", "notes"];
 const WISH_FIELDS = ["type", "category", "priority", "estimated_price", "link", "notes", "budgeted", "replaces_inventory_id"];
 const LIST_FIELDS = ["name", "sort_order", "budget", "notes"];
 
@@ -31,10 +31,10 @@ export async function createInventory(env, b) {
   if (!b.type || !b.category) throw new ValidationError("type og category er påkrevd");
   const id = b.id || newId("INV");
   await env.DB.prepare(
-    `INSERT INTO inventory (id, type, brand, category, status, quality, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO inventory (id, type, brand, model, size, category, status, quality, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
-    id, b.type, b.brand || "", b.category,
+    id, b.type, b.brand || "", b.model || "", b.size || "", b.category,
     b.status || "ok", b.quality || "ukjent", b.notes || ""
   ).run();
   return getInventory(env, id);

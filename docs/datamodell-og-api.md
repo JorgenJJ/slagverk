@@ -13,6 +13,8 @@ genereres i Worker-en med `newId(prefix)` når klienten ikke sender egen `id`.
 | `id` | TEXT | – | primærnøkkel, f.eks. `SD-1` / `INV-<rand>` |
 | `type` | TEXT | – | **påkrevd** |
 | `brand` | TEXT | `''` | merke |
+| `model` | TEXT | `''` | modell (vises i generert oversikt) |
+| `size` | TEXT | `''` | størrelse, f.eks. `36"` |
 | `category` | TEXT | – | **påkrevd** (se kategoriliste) |
 | `status` | TEXT | `ok` | `ok` \| `redusert` \| `ødelagt` |
 | `quality` | TEXT | `ukjent` | `bra` \| `greit` \| `dårlig` \| `ukjent` |
