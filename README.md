@@ -43,7 +43,7 @@ Forutsetter at GitHub-kontoen din allerede er koblet til Cloudflare.
 ### 1. Legg repoet på GitHub
 ```bash
 git init && git add . && git commit -m "Slagverk inventar"
-git remote add origin git@github.com:<deg>/slagverk-inventar.git
+git remote add origin git@github.com:<deg>/slagverk.git
 git push -u origin main
 ```
 
@@ -68,7 +68,7 @@ Velg **én** av:
   bygger og distribuerer automatisk. La build-kommando stå tom.
 - **Direkte fra maskin:** `npx wrangler deploy`.
 
-Du får en adresse som `slagverk-inventar.<konto>.workers.dev`.
+Du får en adresse som `slagverk.<konto>.workers.dev`.
 
 ### 5. Bekreft D1-bindingen
 Worker-prosjekt → **Settings → Bindings**: `DB` skal peke på `slagverk-db`.

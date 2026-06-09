@@ -1,4 +1,4 @@
-name = "slagverk-inventar"
+name = "slagverk"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
 
