@@ -1,7 +1,7 @@
 import { json, err, requireAuth } from "../helpers.js";
 import {
   ValidationError, listLists, createList, updateList, deleteList,
-  addToList, removeFromList,
+  addToList, removeFromList, fulfillList,
 } from "../db.js";
 
 async function body(request) {
@@ -53,4 +53,10 @@ export async function removeItem(request, env, params) {
   const unauth = requireAuth(request, env); if (unauth) return unauth;
   const res = await removeFromList(env, params.id, params.wishlistId);
   return res.ok ? json({ ok: true }) : err("Fant ikke varen i listen", 404);
+}
+
+// POST /api/lists/:id/fulfill  → marker hele lista kjøpt (oppfyll + arkiver)
+export async function fulfill(request, env, params) {
+  const unauth = requireAuth(request, env); if (unauth) return unauth;
+  try { return json(await fulfillList(env, params.id)); } catch (e) { return fail(e); }
 }

@@ -62,6 +62,23 @@ størrelse + pris + lenke), med en liten referanse «↳ for: \<mangel\>» tilba
 mangelen. «+ Legg til varer» lar deg velge mangel + hvilket alternativ (standard:
 billigste). Mangel uten alternativer vises som mangelen selv.
 
+## Oppfyllelse (kjøpt)
+
+De tre fanene har klare roller: **Oversikt** = hva vi har, **Mangler** = hva vi
+mangler (+ utforske alternativer), **Innkjøpslister** = konkrete kjøpsplaner.
+Når noe kjøpes, lukkes sirkelen:
+
+- **Marker kjøpt** på en mangel (et alternativ) eller på en hel innkjøpsliste
+  (`/api/.../fulfill`). Produktet blir nytt **inventar** (merke/modell/størrelse,
+  status ok, kvalitet bra, lenke i merknad), og **mangelen fjernes**.
+- Var mangelen en **erstatning**, merkes det gamle utstyret **utgått**
+  (`inventory.retired_at`) – skjult i oversikten, men bevart (egen «Utgått»-visning
+  med gjenopprett/slett). Det nye arver komponent-posisjonen til det gamle.
+- En hel liste som markeres kjøpt: alle varer oppfylles, og lista **arkiveres**
+  (`lists.archived_at`) – ute av hovedvisningen, men tilgjengelig under «Kjøpt/arkiv».
+- Samme flyt kan trigges **uten liste** (per mangel) og **av AI** (`fulfill_wishlist`
+  / `fulfill_list`). Oppfyllelse har bevisst **ingen angre** (bekreftes i UI).
+
 ## Generér oversikt
 
 Lager en ferdig, utskriftsvennlig oversikt (samme form som det gamle

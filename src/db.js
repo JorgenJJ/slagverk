@@ -8,9 +8,9 @@ import { newId } from "./helpers.js";
 
 export class ValidationError extends Error {}
 
-const INV_FIELDS  = ["type", "brand", "model", "size", "category", "status", "quality", "notes", "parent_id"];
+const INV_FIELDS  = ["type", "brand", "model", "size", "category", "status", "quality", "notes", "parent_id", "retired_at"];
 const WISH_FIELDS = ["type", "category", "priority", "estimated_price", "link", "notes", "budgeted", "replaces_inventory_id"];
-const LIST_FIELDS = ["name", "sort_order", "budget", "notes"];
+const LIST_FIELDS = ["name", "sort_order", "budget", "notes", "archived_at"];
 
 const num = (v) => (v === "" || v === null || v === undefined ? null : Number(v));
 
@@ -273,4 +273,45 @@ export async function deleteOption(env, id) {
   if (!before) return null;
   await env.DB.prepare("DELETE FROM wishlist_options WHERE id = ?").bind(id).run();
   return { before };
+}
+
+// ───────────────────────── Oppfyllelse (kjøpt) ─────────────────────────
+
+// Oppfyll én mangel: produktet (valgt alternativ) blir nytt inventar, mangelen
+// fjernes, og evt. erstattet utstyr merkes «utgått» (bevart, men skjult).
+export async function fulfillWishlist(env, wishlistId, optionId) {
+  const w = await getWishlist(env, wishlistId);
+  if (!w) throw new ValidationError("Fant ikke mangelen");
+  const opt = optionId ? await getOption(env, optionId) : null;
+
+  let parent_id = null;
+  if (w.replaces_inventory_id) {
+    const old = await getInventory(env, w.replaces_inventory_id);
+    if (old) {
+      parent_id = old.parent_id || null; // nytt arver tre-posisjon
+      await env.DB.prepare("UPDATE inventory SET retired_at = datetime('now') WHERE id = ?").bind(old.id).run();
+    }
+  }
+  const link = opt && opt.link ? " – " + opt.link : (w.link ? " – " + w.link : "");
+  const row = await createInventory(env, {
+    type: w.type, category: w.category,
+    brand: (opt && opt.brand) || "", model: (opt && opt.model) || "", size: (opt && opt.size) || "",
+    status: "ok", quality: "bra", notes: "Kjøpt" + link, parent_id,
+  });
+  await deleteWishlist(env, wishlistId); // fjerner mangel + alternativer + liste-koblinger
+  return { inventory: row, retired: w.replaces_inventory_id || null, mangel: w.type };
+}
+
+// Oppfyll en hel innkjøpsliste, og arkiver den.
+export async function fulfillList(env, listId) {
+  const l = await getList(env, listId);
+  if (!l) throw new ValidationError("Fant ikke listen");
+  const { results: items } = await env.DB.prepare("SELECT * FROM list_items WHERE list_id = ?").bind(listId).all();
+  const created = [];
+  for (const it of items) {
+    try { const r = await fulfillWishlist(env, it.wishlist_id, it.option_id); created.push(r.mangel); }
+    catch { /* mangel kan alt være oppfylt via en annen liste */ }
+  }
+  await env.DB.prepare("UPDATE lists SET archived_at = datetime('now') WHERE id = ?").bind(listId).run();
+  return { count: created.length, created };
 }

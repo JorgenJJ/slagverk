@@ -16,6 +16,7 @@ genereres i Worker-en med `newId(prefix)` når klienten ikke sender egen `id`.
 | `model` | TEXT | `''` | modell (vises i generert oversikt) |
 | `size` | TEXT | `''` | størrelse, f.eks. `36"` |
 | `parent_id` | TEXT | `NULL` | **→** `inventory.id` – del av komponent (tre, vilkårlig dybde) |
+| `retired_at` | TEXT | `NULL` | satt = utgått/erstattet (skjult i oversikt, bevart) |
 | `category` | TEXT | – | **påkrevd** (se kategoriliste) |
 | `status` | TEXT | `ok` | `ok` \| `redusert` \| `ødelagt` |
 | `quality` | TEXT | `ukjent` | `bra` \| `greit` \| `dårlig` \| `ukjent` |
@@ -44,6 +45,7 @@ genereres i Worker-en med `newId(prefix)` når klienten ikke sender egen `id`.
 | `name` | TEXT | – | **påkrevd** |
 | `sort_order` | INTEGER | `0` | rekkefølge |
 | `budget` | INTEGER | `NULL` | valgfritt budsjett per liste |
+| `archived_at` | TEXT | `NULL` | satt = kjøpt/arkivert |
 | `notes` | TEXT | `''` | |
 
 ### `list_items` – innhold i listene (mange-til-mange)
@@ -102,6 +104,8 @@ Alt under `/api/`, JSON inn/ut, krever `x-access-code`-header.
 | `PUT/DELETE` | `/api/lists/:id` | Oppdater / slett liste |
 | `POST` | `/api/lists/:id/items` | Legg mangel i liste `{wishlist_id, qty?, option_id?}` |
 | `DELETE` | `/api/lists/:id/items/:wishlistId` | Fjern mangel fra liste |
+| `POST` | `/api/wishlist/:id/fulfill` | Marker mangel kjøpt `{option_id?}` → blir inventar |
+| `POST` | `/api/lists/:id/fulfill` | Marker hele lista kjøpt → oppfyll alle + arkiver |
 | `POST` | `/api/wishlist/:id/options` | Nytt alternativ for en mangel |
 | `PUT/DELETE` | `/api/options/:id` | Oppdater / slett alternativ |
 | `GET/POST` | `/api/brands` | List / opprett godkjent merke |

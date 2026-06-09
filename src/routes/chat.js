@@ -99,6 +99,13 @@ const TOOLS = [
   // Butikk-søk (les-verktøy – finner ekte produkter med URL)
   { name: "search_store", description: "Søk opp EKTE produkter i de foretrukne butikkene (gir produktnavn + URL). Bruk dette FØR du legger inn et alternativ, så du kan bruke den eksakte produkt-URL-en.",
     input_schema: { type: "object", required: ["query"], properties: { query: str("søkeord, f.eks. «black swamp tamburin»") } } },
+
+  // Oppfyllelse (kjøpt)
+  { name: "fulfill_wishlist", description: "Marker en mangel som KJØPT/anskaffet. Produktet blir nytt inventar, mangelen fjernes, og evt. erstattet utstyr merkes utgått. Eks: «vi kjøpte den nye vibrafonen».",
+    input_schema: { type: "object", required: ["ref"], properties: {
+      ref: ref("mangelen som er kjøpt"), option_ref: ref("hvilket alternativ/produkt som ble kjøpt (valgfritt)") } } },
+  { name: "fulfill_list", description: "Marker en hel innkjøpsliste som kjøpt: alle mangler oppfylles til inventar, og lista arkiveres.",
+    input_schema: { type: "object", required: ["ref"], properties: { ref: ref("innkjøpslisten") } } },
 ];
 
 const OPENAI_TOOLS = TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
@@ -198,15 +205,34 @@ async function runTool(env, name, input) {
       return { summary: "Ekte produkter (navn :: pris :: url):\n" + results.map((r) => `- ${r.name}${r.price ? ` :: ${r.price} kr` : ""} :: ${r.url}`).join("\n") };
     }
 
+    // ── Oppfyllelse (ingen angre – tilsiktet handling) ──
+    case "fulfill_wishlist": {
+      const wid = await resolveRef(env, "wishlist", input.ref);
+      const optId = input.option_ref ? await resolveRef(env, "option", input.option_ref) : null;
+      const r = await db.fulfillWishlist(env, wid, optId);
+      return { summary: `Kjøpt: ${r.inventory.type} lagt i inventar${r.retired ? ", gammelt utstyr merket utgått" : ""}` };
+    }
+    case "fulfill_list": {
+      const lid = await resolveRef(env, "list", input.ref);
+      const r = await db.fulfillList(env, lid);
+      return { summary: `Liste kjøpt: ${r.count} produkt(er) lagt i inventar, lista arkivert` };
+    }
+
     // ── Alternativer ──
     case "add_option": {
       const wid = await resolveRef(env, "wishlist", input.wishlist_ref);
-      // Auto-hent ekte pris fra lenken hvis pris ikke er oppgitt.
-      if (input.link && (input.price === undefined || input.price === null)) {
-        try { const pr = await fetchProductPrice(env, input.link); if (pr && pr.price) input.price = pr.price; } catch { /* uten pris er ok */ }
+      // Valider lenken: hent produktsiden. Ugyldig lenke (404/feil host) fjernes
+      // (modellen skal kun bruke URL-er fra search_store). Pris auto-hentes.
+      let linkNote = "";
+      if (input.link) {
+        try {
+          const pr = await fetchProductPrice(env, input.link);
+          if (pr.error) { input.link = ""; linkNote = " (ugyldig lenke ble fjernet – bruk search_store)"; }
+          else if (pr.price && (input.price === undefined || input.price === null)) input.price = pr.price;
+        } catch { input.link = ""; linkNote = " (lenke kunne ikke verifiseres og ble fjernet)"; }
       }
       const row = await db.createOption(env, wid, input);
-      return { summary: `La til alternativ ${[row.brand, row.model].filter(Boolean).join(" ")}${row.price ? ` (${row.price} kr)` : ""}`, action: { kind: "option", op: "create", id: row.id, after: row } };
+      return { summary: `La til alternativ ${[row.brand, row.model].filter(Boolean).join(" ")}${row.price ? ` (${row.price} kr)` : ""}${linkNote}`, action: { kind: "option", op: "create", id: row.id, after: row } };
     }
     case "update_option": { const id = await resolveRef(env, "option", input.ref); const r = await db.updateOption(env, id, input);
       return { summary: `Oppdaterte alternativ`, action: { kind: "option", op: "update", id, before: r.before, after: r.after } }; }
@@ -293,6 +319,9 @@ export async function chat(request, env) {
   const [inv, wish, lists, brands] = await Promise.all([db.listInventory(env), db.listWishlist(env), db.listLists(env), db.listBrands(env)]);
   const today = new Date().toISOString().slice(0, 10);
   const stores = preferredStores(env);
+  const brandsByCat = {};
+  for (const br of brands) (brandsByCat[br.category] ||= []).push(br.name);
+  const brandHint = Object.entries(brandsByCat).map(([c, ns]) => `${c}: ${ns.join(", ")}`).join(" · ") || "(ingen registrert)";
   const examples = FEWSHOT.length
     ? "EKSEMPLER (melding → hva du bør gjøre)\n" + FEWSHOT.map((e) => `- «${e.user}» → ${e.action}`).join("\n") + "\n\n"
     : "";
@@ -325,15 +354,19 @@ gjennom til ALT er gjort – ett verktøykall om gangen er helt greit, og du kan
 mange runder. Ikke avslutt før alle delene er utført. Trenger du å søke opp et
 produkt, kall search_store og bruk deretter add_option med den ekte URL-en.
 
-BUTIKKER OG LENKER
+BUTIKKER OG LENKER (vær nøye!)
 Foretrukne butikker: ${stores.join(", ")}.
-Når du skal finne eller foreslå et konkret produkt (f.eks. et alternativ til en
-mangel): bruk FØRST verktøyet search_store med et kort søkeord. Det gir EKTE
-produkter med navn og URL fra butikken. Velg det som passer best, og bruk den
-EKSAKTE produkt-URL-en som link i add_option – da hentes prisen automatisk.
-Ikke dikt opp produkt-URL-er, og ikke nøy deg med en /search?q=-lenke når
-search_store finner et faktisk produkt. Bare hvis søket ikke gir noe relevant treff,
-kan du bruke en søkelenke (…/search?q=…) som siste utvei.
+For å finne et konkret produkt skal du ALLTID bruke verktøyet search_store først –
+aldri gjett. Oppgir ikke brukeren et merke, SØK med ett av de foretrukne merkene
+for kategorien (se FORETRUKNE MERKER under) + produkttype, f.eks. «sabian suspended
+cymbal». Prøv flere foretrukne merker hvis første søk ikke gir gode treff.
+LENKER: bruk KUN en URL som search_store FAKTISK returnerte, kopiert ordrett som
+link i add_option (da hentes pris automatisk). Du skal ALDRI konstruere, gjette,
+endre eller hente en produkt-URL fra hukommelsen. Får du ingen relevante treff,
+si det – ikke fest en lenke du ikke har fått fra search_store.
+
+FORETRUKNE MERKER PER KATEGORI (bruk når brukeren ikke oppgir merke):
+${brandHint}
 
 DATAMODELL
 - Inventar = utstyr vi eier (type, merke, kategori, status, kvalitet, merknader).

@@ -20,6 +20,7 @@ const state = {
   filters: { category: [], status: [], quality: [], brand: [] },
   openFilter: null, filterSheet: false,
   expandedGroups: {}, expandedWish: {}, expandedNodes: {},
+  retiredView: false, listArchive: false,
   ovMinStatus: "Alle", ovMinQuality: "Alle",
   chat: [], chatBusy: false, chatOpen: false, lastActions: [],
   modal: null,
@@ -114,8 +115,8 @@ const replacementFor = (invId) => state.wishlist.filter((w) => w.replaces_invent
 const listsWith = (wishId) => state.lists.filter((l) => (l.items || []).some((it) => it.wishlist_id === wishId));
 const isErstatning = (w) => !!w.replaces_inventory_id;
 // ── Inventar-tre (komponent → deler) ──
-const invChildren = (id) => state.inventory.filter((i) => i.parent_id === id).sort((a, b) => (a.category + a.type).localeCompare(b.category + b.type));
-const invRoots = () => state.inventory.filter((i) => !i.parent_id || !inv(i.parent_id))
+const invChildren = (id) => state.inventory.filter((i) => i.parent_id === id && !i.retired_at).sort((a, b) => (a.category + a.type).localeCompare(b.category + b.type));
+const invRoots = () => state.inventory.filter((i) => (!i.parent_id || !inv(i.parent_id)) && !i.retired_at)
   .sort((a, b) => (a.category + a.type).localeCompare(b.category + b.type));
 const invHasKids = (i) => state.inventory.some((x) => x.parent_id === i.id);
 function invSubtreeCount(id) { let n = 0; for (const c of invChildren(id)) n += 1 + invSubtreeCount(c.id); return n; }
@@ -173,6 +174,26 @@ async function deleteInventory(id) {
   const n = invSubtreeCount(id);
   if (n > 0 && !confirm(`Dette sletter også ${n} underdel${n > 1 ? "er" : ""}. Fortsette?`)) return;
   await api("/inventory/" + id, { method: "DELETE" }); state.modal = null; await loadAll(); toast("Slettet");
+}
+// ── Oppfyllelse (kjøpt) + arkivering ──
+async function fulfillWish(wishId, optionId) {
+  if (!confirm("Marker som kjøpt? Produktet legges i inventar og mangelen fjernes.")) return;
+  await api(`/wishlist/${wishId}/fulfill`, { method: "POST", body: JSON.stringify({ option_id: optionId || null }) });
+  await loadAll(); toast("Kjøpt – lagt i inventar");
+}
+async function fulfillListBuy(listId) {
+  const l = byId(state.lists, listId); const n = (l?.items || []).length;
+  if (!confirm(`Marker «${l ? l.name : ""}» som kjøpt?\n${n} vare(r) legges i inventar, manglene fjernes, og lista arkiveres.`)) return;
+  const r = await api(`/lists/${listId}/fulfill`, { method: "POST" });
+  await loadAll(); toast(`Kjøpt – ${r.count} lagt i inventar`);
+}
+async function setRetired(id, retired) {
+  await api(`/inventory/${id}`, { method: "PUT", body: JSON.stringify({ retired_at: retired ? new Date().toISOString() : null }) });
+  await loadAll(); toast(retired ? "Merket utgått" : "Gjenopprettet");
+}
+async function setArchived(id, archived) {
+  await api(`/lists/${id}`, { method: "PUT", body: JSON.stringify({ archived_at: archived ? new Date().toISOString() : null }) });
+  await loadAll(); toast(archived ? "Arkivert" : "Gjenopprettet");
 }
 async function saveWish(item, isNew) {
   const payload = { ...item, estimated_price: item.estimated_price === "" ? null : Number(item.estimated_price) };
@@ -426,7 +447,9 @@ function invTreeCards(siblings, depth) {
 }
 
 function viewOversikt() {
-  const all = state.inventory;
+  const all = state.inventory.filter((i) => !i.retired_at);   // aktivt utstyr
+  const retired = state.inventory.filter((i) => i.retired_at);
+  if (state.retiredView) return viewRetired(retired);
   const s = {
     total: all.length, ok: all.filter((i) => i.status === "ok").length,
     redusert: all.filter((i) => i.status === "redusert").length,
@@ -465,12 +488,29 @@ function viewOversikt() {
       <div class="stat click ${statActive("quality", "dårlig") ? "on" : ""}" data-stat="quality:dårlig"><b style="color:var(--warn)">${s.dårlig}</b><span>Dårlig kval.</span></div>
     </div>
     ${filterBar()}
+    ${retired.length ? `<div style="margin:-4px 0 12px"><button class="btn ghost sm" data-act="toggle-retired">⌫ Utgått utstyr (${retired.length})</button></div>` : ""}
     ${flat ? "" : `<div class="tree-hint">Klikk en komponent (f.eks. trommesett) for å se delene. Filtrer for å se alt flatt.</div>`}
     <table>
       <thead><tr><th>Type</th><th>Merke</th><th>Størrelse</th><th>Kategori</th><th>Tilstand</th><th>Kvalitet</th><th>Merknader</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="7" style="color:var(--muted)">Ingen treff.</td></tr>`}</tbody>
     </table>
     <div class="cards">${cards || `<p style="color:var(--muted)">Ingen treff.</p>`}</div>`;
+}
+
+// Utgått/erstattet utstyr (egen visning, bevart men ute av oversikten).
+function viewRetired(retired) {
+  return `
+    <div class="toolbar"><button class="btn ghost sm" data-act="toggle-retired">← Tilbake til oversikt</button>
+      <span class="eyebrow">Utgått / erstattet utstyr</span></div>
+    <p style="color:var(--muted);font-size:13px">Utstyr som er erstattet av nyere innkjøp. Tas ikke med i oversikten, men er bevart.</p>
+    ${retired.length ? `<table>
+      <thead><tr><th>Type</th><th>Merke</th><th>Størrelse</th><th>Kategori</th><th></th></tr></thead>
+      <tbody>${retired.map((i) => `<tr>
+        <td style="font-weight:700">${esc(i.type)}</td><td style="color:var(--muted)">${esc(i.brand) || "–"}</td>
+        <td class="mono">${esc(i.size) || "–"}</td><td><span class="mono">${esc(i.category)}</span></td>
+        <td style="text-align:right"><span class="link-chip" data-unretire="${i.id}">↩ Gjenopprett</span> <span class="link-chip" data-del-inv="${i.id}">Slett</span></td>
+      </tr>`).join("")}</tbody></table>`
+      : `<p style="color:var(--muted)">Ingenting utgått.</p>`}`;
 }
 
 // ── Mangler (med art-kolonne, prisspenn og ekspanderbare alternativer) ──
@@ -490,7 +530,8 @@ function viewMangler() {
           <div class="opt-links">${o.link ? `<a href="${esc(o.link)}" target="_blank" rel="noreferrer">🔗 Produkt</a>` : ""}
             <span class="link-chip" data-edit-opt="${w.id}|${o.id}">Rediger</span>
             ${o.link ? `<span class="link-chip" data-priceopt="${o.id}|${esc(o.link)}">⟳ Pris</span>` : ""}
-            <span class="link-chip" data-addtolist="${w.id}|${o.id}">+ Til liste</span></div>
+            <span class="link-chip" data-addtolist="${w.id}|${o.id}">+ Til liste</span>
+            <span class="link-chip buy" data-buyopt="${w.id}|${o.id}">✓ Kjøpt</span></div>
         </div>
         <div class="opt-price price">${fmt(o.price)}</div>
       </div>`).join("") : `<div class="opt empty">Ingen alternativer lagt inn ennå.</div>`}
@@ -498,6 +539,7 @@ function viewMangler() {
         <button class="btn ghost sm" data-edit-wish="${w.id}">✎ Rediger mangel (type, prioritet …)</button>
         <button class="btn ghost sm" data-addopt="${w.id}">+ Alternativ</button>
         <button class="btn ghost sm" data-addtolist="${w.id}|">+ Legg mangel i liste</button>
+        ${opts.length ? "" : `<button class="btn ghost sm" data-buywish="${w.id}">✓ Marker kjøpt</button>`}
       </div>
     </div>`;
   }
@@ -542,12 +584,29 @@ function viewMangler() {
 
 // ── Innkjøpslister ──
 function viewLister() {
+  const active = state.lists.filter((l) => !l.archived_at);
+  const archived = state.lists.filter((l) => l.archived_at);
+  if (state.listArchive) return viewListArchive(archived);
   return `
     <div class="toolbar"><span class="eyebrow">Innkjøpslister</span><span class="spacer"></span>
+      ${archived.length ? `<button class="btn ghost sm" data-act="toggle-archive">📁 Kjøpt/arkiv (${archived.length})</button>` : ""}
       <button class="btn" data-act="add-list">+ Ny liste</button></div>
-    ${state.lists.length ? `<div class="lists-grid">${state.lists.map(listCard).join("")}</div>`
-      : `<p style="color:var(--muted)">Ingen lister ennå. Lag én, og legg inn mangler du vil kjøpe sammen.</p>`}
+    ${active.length ? `<div class="lists-grid">${active.map(listCard).join("")}</div>`
+      : `<p style="color:var(--muted)">Ingen aktive lister. Lag én, og legg inn mangler du vil kjøpe sammen.</p>`}
     <div class="grand"><div><div class="label">Sum alle mangler (overordnet)</div></div><div class="val">${fmt(manglerTotal())}</div></div>`;
+}
+function viewListArchive(archived) {
+  return `
+    <div class="toolbar"><button class="btn ghost sm" data-act="toggle-archive">← Tilbake</button>
+      <span class="eyebrow">Kjøpt / arkiverte lister</span></div>
+    ${archived.length ? `<div class="lists-grid">${archived.map((l) => `<div class="list-card" style="opacity:.85">
+      <div class="head"><h3>${esc(l.name)}</h3>
+        <div class="sum" style="color:var(--ok)">✓ Kjøpt${l.archived_at ? " · " + esc(String(l.archived_at).slice(0, 10)) : ""}</div>
+        ${l.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${esc(l.notes)}</div>` : ""}</div>
+      <div class="foot"><span style="flex:1;color:var(--muted);font-size:12px">Produktene ligger nå i inventar.</span>
+        <span class="link-chip" data-unarchive="${l.id}">↩ Gjenåpne</span>
+        <button class="btn danger sm" data-del-list="${l.id}">Slett</button></div>
+    </div>`).join("")}</div>` : `<p style="color:var(--muted)">Ingen arkiverte lister.</p>`}`;
 }
 function listCard(l) {
   const sum = listSum(l);
@@ -579,6 +638,7 @@ function listCard(l) {
     <div class="foot">
       <button class="btn ghost sm" data-add-items="${l.id}">+ Legg til varer</button>
       <button class="btn ghost sm" data-export-list="${l.id}">⬇ Eksporter</button>
+      ${items.length ? `<button class="btn brass sm" data-buy-list="${l.id}">✓ Marker kjøpt</button>` : ""}
       <span style="flex:1"></span>
       <button class="btn danger sm" data-del-list="${l.id}">Slett</button>
     </div>
@@ -842,6 +902,13 @@ function wire() {
   q("[data-export-list]").forEach((el) => el.onclick = () => exportListCSV(byId(state.lists, el.dataset.exportList)));
   q("[data-del-list]").forEach((el) => el.onclick = () => { if (confirm("Slette listen?")) deleteList(el.dataset.delList); });
   q("[data-rmitem]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [lid, wid] = splitFirst(el.dataset.rmitem); toggleListItem(lid, wid, false); });
+  // Oppfyllelse / arkiv
+  q("[data-buyopt]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [wid, oid] = splitFirst(el.dataset.buyopt); fulfillWish(wid, oid); });
+  q("[data-buywish]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); fulfillWish(el.dataset.buywish, null); });
+  q("[data-buy-list]").forEach((el) => el.onclick = () => fulfillListBuy(el.dataset.buyList));
+  q("[data-unretire]").forEach((el) => el.onclick = () => setRetired(el.dataset.unretire, false));
+  q("[data-del-inv]").forEach((el) => el.onclick = () => { if (confirm("Slette utgått utstyr permanent?")) deleteInventory(el.dataset.delInv); });
+  q("[data-unarchive]").forEach((el) => el.onclick = () => setArchived(el.dataset.unarchive, false));
   q("[data-li-edit]").forEach((el) => el.onclick = (e) => { if (e.target.closest("[data-rmitem],a,[data-stoplink]")) return; openModal({ kind: "edit-wish", item: { ...wish(el.dataset.liEdit) } }); });
   q("[data-toggleitem]").forEach((cb) => cb.onchange = () => {
     const [lid, wid] = splitFirst(cb.dataset.toggleitem);
@@ -872,6 +939,8 @@ function wire() {
       "open-filtersheet": () => { state.filterSheet = true; render(); },
       "close-filtersheet": () => { state.filterSheet = false; render(); },
       "clear-filters": () => { state.filters = { category: [], status: [], quality: [], brand: [] }; render(); },
+      "toggle-retired": () => { state.retiredView = !state.retiredView; render(); },
+      "toggle-archive": () => { state.listArchive = !state.listArchive; render(); },
       "close-filter": () => { state.openFilter = null; render(); },
       "copy-report": () => { navigator.clipboard.writeText(reportText()); toast("Kopiert"); },
       "print-report": () => window.print(),

@@ -203,6 +203,7 @@ tr.click:hover { background: #fbf6ec; }
   border: 1px solid var(--line); cursor: pointer; white-space: nowrap;
 }
 .link-chip.repl { background: var(--red-tint); color: var(--red-deep); border-color: #e9c9c7; }
+.link-chip.buy { background: #e7f1ea; color: var(--ok); border-color: #cfe6d6; font-weight: 700; }
 .link-chip:hover { border-color: var(--brass); }
 
 /* Kort (mobil) */

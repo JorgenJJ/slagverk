@@ -25,8 +25,9 @@ const ROUTES = [
   { method: "PUT",    pattern: /^\/api\/inventory\/([^/]+)$/, handler: (req, env, m) => inventory.update(req, env, { id: id(m, 1) }) },
   { method: "DELETE", pattern: /^\/api\/inventory\/([^/]+)$/, handler: (req, env, m) => inventory.remove(req, env, { id: id(m, 1) }) },
 
-  // Mangel-alternativer (mer spesifikk enn /wishlist/:id) først.
+  // Mangel-alternativer + oppfyllelse (mer spesifikk enn /wishlist/:id) først.
   { method: "POST",   pattern: /^\/api\/wishlist\/([^/]+)\/options\/?$/, handler: (req, env, m) => options.create(req, env, { id: id(m, 1) }) },
+  { method: "POST",   pattern: /^\/api\/wishlist\/([^/]+)\/fulfill\/?$/, handler: (req, env, m) => wishlist.fulfill(req, env, { id: id(m, 1) }) },
   { method: "GET",    pattern: /^\/api\/wishlist\/?$/,        handler: (req, env) => wishlist.list(req, env) },
   { method: "POST",   pattern: /^\/api\/wishlist\/?$/,        handler: (req, env) => wishlist.create(req, env) },
   { method: "PUT",    pattern: /^\/api\/wishlist\/([^/]+)$/,  handler: (req, env, m) => wishlist.update(req, env, { id: id(m, 1) }) },
@@ -41,6 +42,7 @@ const ROUTES = [
   { method: "DELETE", pattern: /^\/api\/brands\/([^/]+)$/,    handler: (req, env, m) => brands.remove(req, env, { id: id(m, 1) }) },
 
   // Mer spesifikke lister-ruter (items) før de generelle.
+  { method: "POST",   pattern: /^\/api\/lists\/([^/]+)\/fulfill\/?$/,      handler: (req, env, m) => lists.fulfill(req, env, { id: id(m, 1) }) },
   { method: "POST",   pattern: /^\/api\/lists\/([^/]+)\/items\/?$/,        handler: (req, env, m) => lists.addItem(req, env, { id: id(m, 1) }) },
   { method: "DELETE", pattern: /^\/api\/lists\/([^/]+)\/items\/([^/]+)$/,  handler: (req, env, m) => lists.removeItem(req, env, { id: id(m, 1), wishlistId: id(m, 2) }) },
   { method: "GET",    pattern: /^\/api\/lists\/?$/,           handler: (req, env) => lists.list(req, env) },
