@@ -126,7 +126,7 @@ function invPath(i) { const out = []; let p = i.parent_id ? inv(i.parent_id) : n
 function invRows() {
   return state.inventory.map((i) => ({
     Type: i.type, Merke: i.brand, Kategori: i.category,
-    Status: STATUS_LABEL[i.status] || i.status, Kvalitet: i.quality, Merknader: i.notes,
+    Tilstand: STATUS_LABEL[i.status] || i.status, Kvalitet: i.quality, Merknader: i.notes,
   }));
 }
 function wishRows(items) {
@@ -352,7 +352,7 @@ function filterBar() {
     <span class="filter-lead desktop-only">Filtre</span>
     <div class="filter-row desktop-only">
       ${filterDropdown("category", "Kategori", CATEGORIES.map((c) => ({ val: c, label: c })))}
-      ${filterDropdown("status", "Status", STATUSES.map((s) => ({ val: s, label: STATUS_LABEL[s] })))}
+      ${filterDropdown("status", "Tilstand", STATUSES.map((s) => ({ val: s, label: STATUS_LABEL[s] })))}
       ${filterDropdown("quality", "Kvalitet", QUALITIES.map((qv) => ({ val: qv, label: qv })))}
       ${filterDropdown("brand", "Merke", brandOptions())}
     </div>
@@ -369,7 +369,7 @@ function renderFilterSheet() {
   return `<div class="modal-bg" data-act="close-filtersheet"><div class="modal" data-stop>
     <h3>Filtre</h3>
     ${group("category", "Kategori", CATEGORIES.map((c) => ({ val: c, label: c })))}
-    ${group("status", "Status", STATUSES.map((s) => ({ val: s, label: STATUS_LABEL[s] })))}
+    ${group("status", "Tilstand", STATUSES.map((s) => ({ val: s, label: STATUS_LABEL[s] })))}
     ${group("quality", "Kvalitet", QUALITIES.map((qv) => ({ val: qv, label: qv })))}
     ${group("brand", "Merke", brandOptions())}
     <div class="actions">${anyFilter() ? `<button class="btn danger" data-act="clear-filters">Nullstill alle</button>` : ""}<span class="spacer"></span><button class="btn" data-act="close-filtersheet">Ferdig</button></div>
@@ -467,7 +467,7 @@ function viewOversikt() {
     ${filterBar()}
     ${flat ? "" : `<div class="tree-hint">Klikk en komponent (f.eks. trommesett) for å se delene. Filtrer for å se alt flatt.</div>`}
     <table>
-      <thead><tr><th>Type</th><th>Merke</th><th>Størrelse</th><th>Kategori</th><th>Status</th><th>Kvalitet</th><th>Merknader</th></tr></thead>
+      <thead><tr><th>Type</th><th>Merke</th><th>Størrelse</th><th>Kategori</th><th>Tilstand</th><th>Kvalitet</th><th>Merknader</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="7" style="color:var(--muted)">Ingen treff.</td></tr>`}</tbody>
     </table>
     <div class="cards">${cards || `<p style="color:var(--muted)">Ingen treff.</p>`}</div>`;
@@ -618,7 +618,7 @@ function viewGenerer() {
   const cats = CATEGORIES.filter((c) => included.some((i) => i.category === c));
   return `
     <div class="gen-controls">
-      ${sel("Minste status", "status", minS, [["Alle", "Alle"], ["ødelagt", "Min. ødelagt"], ["redusert", "Min. redusert"], ["ok", "Kun OK"]])}
+      ${sel("Minste tilstand", "status", minS, [["Alle", "Alle"], ["ødelagt", "Min. ødelagt"], ["redusert", "Min. redusert"], ["ok", "Kun OK"]])}
       ${sel("Minste kvalitet", "quality", minQ, [["Alle", "Alle"], ["dårlig", "Min. dårlig"], ["greit", "Min. greit"], ["bra", "Kun bra"]])}
       <div style="flex:1"></div>
       <button class="btn ghost sm" data-act="copy-report">⧉ Kopier</button>
@@ -693,7 +693,7 @@ function modalEntity(m) {
     ${txt("Type", "type")}
     <div class="field"><label>Merke</label><input data-f="brand" list="brandlist" value="${esc(item.brand ?? "")}" />${brandList}</div>
     ${txt("Modell", "model")}${txt("Størrelse", "size")}
-    ${sel("Kategori", "category", CATEGORIES)}${sel("Status", "status", STATUSES)}${sel("Kvalitet", "quality", QUALITIES)}
+    ${sel("Kategori", "category", CATEGORIES)}${sel("Tilstand", "status", STATUSES)}${sel("Kvalitet", "quality", QUALITIES)}
     ${txt("Merknader", "notes")}
     <div class="field"><label>Del av (komponent, valgfritt)</label><select data-f="parent_id">
       <option value="">– ingen (toppnivå) –</option>
