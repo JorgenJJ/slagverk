@@ -12,16 +12,18 @@ export function err(message, status = 400) {
   return json({ error: message }, status);
 }
 
-// Enkel felles-kode-beskyttelse.
-// Klienten sender header `x-access-code`; vi sammenligner mot secret ACCESS_CODE.
+// Felles-kode-beskyttelse. Klienten sender header `x-access-code`; vi sammenligner
+// mot secret ACCESS_CODE. ALLE /api/-endepunkter krever dette (kalles først i hver
+// handler), så ingen kan bruke endepunktene uten gyldig kode.
 export function checkAuth(request, env) {
   const provided = request.headers.get("x-access-code") || "";
   const expected = env.ACCESS_CODE || "";
-  if (!expected) return true; // hvis ingen kode er satt, er appen åpen
-  // konstant-tid-ish sammenligning
-  if (provided.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < provided.length; i++) diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+  // Fail closed: er ingen ACCESS_CODE konfigurert, NEKTES alt (appen er ikke åpen).
+  // ACCESS_CODE må settes som secret på Worker-en før noe fungerer.
+  if (!expected) return false;
+  // Konstant-tid-ish sammenligning (lik mengde arbeid uansett lengde).
+  let diff = provided.length ^ expected.length;
+  for (let i = 0; i < provided.length; i++) diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i % (expected.length || 1));
   return diff === 0;
 }
 

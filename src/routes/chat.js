@@ -20,78 +20,170 @@ import * as db from "../db.js";
 const DEFAULT_MODEL = { anthropic: "claude-haiku-4-5-20251001", openai: "gpt-4.1-nano" };
 const MAX_STEPS = 6; // verktøy-runder per melding
 
+const CAT = ["Trommer", "Melodisk", "Pauker", "Cymbaler", "Stativer", "Perkusjon"];
+const BRANDCAT = ["Generelt", ...CAT];
+const STAT = ["ok", "redusert", "ødelagt"];
+const QUAL = ["bra", "greit", "dårlig", "ukjent"];
+const PRIO = ["høy", "middels", "lav"];
 const str = (d = "") => ({ type: "string", description: d });
+const enm = (vals, d = "") => ({ type: "string", enum: vals, description: d });
+const num = (d = "kroner") => ({ type: "number", description: d });
+// Referanse til en eksisterende rad: id fra DATA, ELLER bare navn/type (appen slår opp).
+const ref = (what) => str(`${what}: id fra DATA, eller bare navnet/typen – appen finner raden (og spør hvis flere matcher).`);
 
 // Kanonisk verktøydefinisjon (Anthropic-form). Konverteres til OpenAI-form under.
+// Modellen har FULL tilgang: opprette, oppdatere og slette alt appen kan.
 const TOOLS = [
-  { name: "add_inventory", description: "Legg til et nytt utstyr vi har.",
+  // Inventar
+  { name: "add_inventory", description: "Legg til et utstyr vi eier. Eks: «legg til en triangel i perkusjon».",
     input_schema: { type: "object", required: ["type", "category"], properties: {
-      type: str("f.eks. Skarptromme"), category: str("Trommer|Melodisk|Pauker|Cymbaler|Stativer|Perkusjon"),
-      brand: str(), status: str("ok|redusert|ødelagt"), quality: str("bra|greit|dårlig|ukjent"), notes: str() } } },
-  { name: "update_inventory", description: "Oppdater et eksisterende utstyr (bruk id).",
-    input_schema: { type: "object", required: ["id"], properties: {
-      id: str(), type: str(), brand: str(), category: str(), status: str(), quality: str(), notes: str() } } },
-  { name: "delete_inventory", description: "Slett et utstyr (bruk id).",
-    input_schema: { type: "object", required: ["id"], properties: { id: str() } } },
+      type: str("instrumentnavn, f.eks. «Skarptromme»"), category: enm(CAT), brand: str("produsent"),
+      status: enm(STAT, "standard ok"), quality: enm(QUAL, "standard ukjent"), notes: str() } } },
+  { name: "update_inventory", description: "Endre et utstyr, f.eks. status/kvalitet. Eks: «xylofonen er ødelagt».",
+    input_schema: { type: "object", required: ["ref"], properties: {
+      ref: ref("utstyret"), type: str(), brand: str(), category: enm(CAT), status: enm(STAT), quality: enm(QUAL), notes: str() } } },
+  { name: "delete_inventory", description: "Slett et utstyr.",
+    input_schema: { type: "object", required: ["ref"], properties: { ref: ref("utstyret") } } },
 
-  { name: "add_wishlist", description: "Legg til en mangel / ønsket innkjøp.",
+  // Mangler
+  { name: "add_wishlist", description: "Registrer en mangel / ønsket innkjøp. Eks: «vi mangler en ny pauke til ca 70k».",
     input_schema: { type: "object", required: ["type", "category"], properties: {
-      type: str(), category: str(), priority: str("høy|middels|lav"),
-      estimated_price: { type: "number", description: "kroner" }, link: str("leverandør-lenke"),
-      notes: str(), replaces_inventory_id: str("id på utstyr denne erstatter, hvis relevant") } } },
-  { name: "update_wishlist", description: "Oppdater en mangel (bruk id).",
-    input_schema: { type: "object", required: ["id"], properties: {
-      id: str(), type: str(), category: str(), priority: str(),
-      estimated_price: { type: "number" }, link: str(), notes: str(), replaces_inventory_id: str() } } },
-  { name: "delete_wishlist", description: "Slett en mangel (bruk id).",
-    input_schema: { type: "object", required: ["id"], properties: { id: str() } } },
+      type: str(), category: enm(CAT), priority: enm(PRIO, "standard middels"), estimated_price: num(),
+      link: str("leverandør-lenke"), notes: str(),
+      replaces_ref: ref("utstyr i dårlig stand som denne erstatter (valgfritt)") } } },
+  { name: "update_wishlist", description: "Endre en mangel.",
+    input_schema: { type: "object", required: ["ref"], properties: {
+      ref: ref("mangelen"), type: str(), category: enm(CAT), priority: enm(PRIO), estimated_price: num(),
+      link: str(), notes: str(), replaces_ref: ref("utstyr denne erstatter") } } },
+  { name: "delete_wishlist", description: "Slett en mangel.",
+    input_schema: { type: "object", required: ["ref"], properties: { ref: ref("mangelen") } } },
 
-  { name: "create_list", description: "Opprett en ny innkjøpsliste.",
-    input_schema: { type: "object", required: ["name"], properties: {
-      name: str(), budget: { type: "number" }, notes: str() } } },
-  { name: "add_to_list", description: "Legg en mangel til en innkjøpsliste.",
-    input_schema: { type: "object", required: ["list_id", "wishlist_id"], properties: {
-      list_id: str(), wishlist_id: str(), qty: { type: "number" } } } },
+  // Innkjøpslister
+  { name: "create_list", description: "Opprett en innkjøpsliste. Eks: «lag liste for NM 2026 med budsjett 100000».",
+    input_schema: { type: "object", required: ["name"], properties: { name: str(), budget: num(), notes: str() } } },
+  { name: "update_list", description: "Endre en innkjøpsliste (navn/budsjett/notat).",
+    input_schema: { type: "object", required: ["ref"], properties: { ref: ref("listen"), name: str("nytt navn"), budget: num(), notes: str() } } },
+  { name: "delete_list", description: "Slett en innkjøpsliste.",
+    input_schema: { type: "object", required: ["ref"], properties: { ref: ref("listen") } } },
+  { name: "add_to_list", description: "Legg en mangel i en innkjøpsliste.",
+    input_schema: { type: "object", required: ["list_ref", "wishlist_ref"], properties: {
+      list_ref: ref("listen"), wishlist_ref: ref("mangelen"), qty: num("antall, standard 1") } } },
   { name: "remove_from_list", description: "Fjern en mangel fra en innkjøpsliste.",
-    input_schema: { type: "object", required: ["list_id", "wishlist_id"], properties: {
-      list_id: str(), wishlist_id: str() } } },
+    input_schema: { type: "object", required: ["list_ref", "wishlist_ref"], properties: {
+      list_ref: ref("listen"), wishlist_ref: ref("mangelen") } } },
 
-  { name: "add_brand", description: "Legg til et godkjent/foretrukket merke.",
+  // Godkjente merker
+  { name: "add_brand", description: "Legg til et godkjent/foretrukket merke. Eks: «Gretsch er foretrukket innen trommer».",
     input_schema: { type: "object", required: ["name"], properties: {
-      name: str(), category: str("hvilket utstyr merket er foretrukket innen"), notes: str() } } },
-  { name: "add_option", description: "Legg til et produkt-/prisalternativ for en mangel.",
-    input_schema: { type: "object", required: ["wishlist_id"], properties: {
-      wishlist_id: str(), brand: str(), model: str(), size: str(), info: str(), link: str(),
-      price: { type: "number", description: "kroner" } } } },
+      name: str(), category: enm(BRANDCAT, "hva merket er foretrukket innen, standard Generelt"), notes: str() } } },
+  { name: "update_brand", description: "Endre et merke (navn/kategori/notat). Eks: «Majestic er foretrukket innen trommer».",
+    input_schema: { type: "object", required: ["ref"], properties: {
+      ref: ref("merket"), name: str("nytt navn"), category: enm(BRANDCAT), notes: str() } } },
+  { name: "delete_brand", description: "Slett et godkjent merke.",
+    input_schema: { type: "object", required: ["ref"], properties: { ref: ref("merket") } } },
+
+  // Alternativer (konkrete produkter under en mangel)
+  { name: "add_option", description: "Legg et produkt-/prisalternativ til en mangel.",
+    input_schema: { type: "object", required: ["wishlist_ref"], properties: {
+      wishlist_ref: ref("mangelen"), brand: str("produsent"), model: str(), size: str(), info: str(), link: str(), price: num() } } },
+  { name: "update_option", description: "Endre et alternativ.",
+    input_schema: { type: "object", required: ["ref"], properties: {
+      ref: ref("alternativet (produsent/modell)"), brand: str(), model: str(), size: str(), info: str(), link: str(), price: num() } } },
+  { name: "delete_option", description: "Slett et alternativ.",
+    input_schema: { type: "object", required: ["ref"], properties: { ref: ref("alternativet") } } },
 ];
 
 const OPENAI_TOOLS = TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
 
+// Få-skudd-eksempler: lær modellen norske fraseringer → riktig handling.
+// Fyll inn SELV. La stå tom = ingen eksempler injiseres. Form per element:
+//   { user: "det brukeren skriver", action: "kort: hvilket verktøy med hvilke felt" }
+// F.eks.: { user: "…", action: "update_inventory(id=…, status=ødelagt)" }
+const FEWSHOT = [
+  // { user: "", action: "" },
+];
+
+// ── Navn→id-oppslag (B8) ──
+// Lar modellen referere til rader med navn/type i stedet for opake UUID-er.
+async function listFor(env, kind) {
+  switch (kind) {
+    case "inventory": return db.listInventory(env);
+    case "wishlist": return db.listWishlist(env);
+    case "list": return db.listLists(env);
+    case "brand": return db.listBrands(env);
+    case "option": return (await db.listWishlist(env)).flatMap((w) => w.options || []);
+  }
+}
+function labelFor(kind, it) {
+  if (kind === "inventory") return [it.type, it.brand].filter(Boolean).join(" ");
+  if (kind === "option") return [it.brand, it.model, it.size].filter(Boolean).join(" ");
+  return it.name || it.type || it.id;
+}
+const KIND_LABEL = { inventory: "utstyr", wishlist: "mangel", list: "liste", brand: "merke", option: "alternativ" };
+async function resolveRef(env, kind, value) {
+  if (value === undefined || value === null || value === "") throw new Error(`Mangler referanse til ${KIND_LABEL[kind]}.`);
+  const items = (await listFor(env, kind)) || [];
+  const exact = items.find((it) => it.id === value);
+  if (exact) return exact.id;
+  const q = String(value).toLowerCase().trim();
+  const m = items.filter((it) => labelFor(kind, it).toLowerCase().includes(q));
+  if (m.length === 1) return m[0].id;
+  if (m.length === 0) throw new Error(`Fant ingen ${KIND_LABEL[kind]} som matcher «${value}».`);
+  throw new Error(`Flere ${KIND_LABEL[kind]} matcher «${value}»: ${m.map((x) => `${labelFor(kind, x)} (${x.id})`).join("; ")}. Be brukeren presisere, eller bruk id.`);
+}
+
 // Kjør ett verktøykall mot databasen. Returnerer { summary, action }.
 async function runTool(env, name, input) {
   switch (name) {
+    // ── Inventar ──
     case "add_inventory": { const row = await db.createInventory(env, input);
-      return { summary: `La til ${row.type} (${row.id})`, action: { kind: "inventory", op: "create", id: row.id, after: row } }; }
-    case "update_inventory": { const r = await db.updateInventory(env, input.id, input); if (!r) throw new Error("Fant ikke utstyr " + input.id);
-      return { summary: `Oppdaterte ${r.after.type} (${r.after.id})`, action: { kind: "inventory", op: "update", id: r.after.id, before: r.before, after: r.after } }; }
-    case "delete_inventory": { const r = await db.deleteInventory(env, input.id); if (!r) throw new Error("Fant ikke utstyr " + input.id);
-      return { summary: `Slettet ${r.before.type} (${input.id})`, action: { kind: "inventory", op: "delete", id: input.id, before: r.before } }; }
-    case "add_wishlist": { const row = await db.createWishlist(env, input);
-      return { summary: `La til mangel ${row.type} (${row.id})`, action: { kind: "wishlist", op: "create", id: row.id, after: row } }; }
-    case "update_wishlist": { const r = await db.updateWishlist(env, input.id, input); if (!r) throw new Error("Fant ikke mangel " + input.id);
-      return { summary: `Oppdaterte mangel ${r.after.type} (${r.after.id})`, action: { kind: "wishlist", op: "update", id: r.after.id, before: r.before, after: r.after } }; }
-    case "delete_wishlist": { const r = await db.deleteWishlist(env, input.id); if (!r) throw new Error("Fant ikke mangel " + input.id);
-      return { summary: `Slettet mangel ${r.before.type} (${input.id})`, action: { kind: "wishlist", op: "delete", id: input.id, before: r.before } }; }
+      return { summary: `La til ${row.type}`, action: { kind: "inventory", op: "create", id: row.id, after: row } }; }
+    case "update_inventory": { const id = await resolveRef(env, "inventory", input.ref); const r = await db.updateInventory(env, id, input);
+      return { summary: `Oppdaterte ${r.after.type}`, action: { kind: "inventory", op: "update", id, before: r.before, after: r.after } }; }
+    case "delete_inventory": { const id = await resolveRef(env, "inventory", input.ref); const r = await db.deleteInventory(env, id);
+      return { summary: `Slettet ${r.before.type}`, action: { kind: "inventory", op: "delete", id, before: r.before } }; }
+
+    // ── Mangler ──
+    case "add_wishlist": { if (input.replaces_ref) input.replaces_inventory_id = await resolveRef(env, "inventory", input.replaces_ref);
+      const row = await db.createWishlist(env, input);
+      return { summary: `La til mangel ${row.type}`, action: { kind: "wishlist", op: "create", id: row.id, after: row } }; }
+    case "update_wishlist": { const id = await resolveRef(env, "wishlist", input.ref);
+      if (input.replaces_ref) input.replaces_inventory_id = await resolveRef(env, "inventory", input.replaces_ref);
+      const r = await db.updateWishlist(env, id, input);
+      return { summary: `Oppdaterte mangel ${r.after.type}`, action: { kind: "wishlist", op: "update", id, before: r.before, after: r.after } }; }
+    case "delete_wishlist": { const id = await resolveRef(env, "wishlist", input.ref); const r = await db.deleteWishlist(env, id);
+      return { summary: `Slettet mangel ${r.before.type}`, action: { kind: "wishlist", op: "delete", id, before: r.before } }; }
+
+    // ── Innkjøpslister ──
     case "create_list": { const row = await db.createList(env, input);
-      return { summary: `Opprettet listen «${row.name}» (${row.id})`, action: { kind: "list", op: "create", id: row.id, after: row } }; }
-    case "add_to_list": { await db.addToList(env, input.list_id, input.wishlist_id, input.qty);
-      return { summary: `La ${input.wishlist_id} i liste ${input.list_id}`, action: { kind: "list_item", op: "add", list_id: input.list_id, wishlist_id: input.wishlist_id } }; }
-    case "remove_from_list": { await db.removeFromList(env, input.list_id, input.wishlist_id);
-      return { summary: `Fjernet ${input.wishlist_id} fra liste ${input.list_id}`, action: { kind: "list_item", op: "remove", list_id: input.list_id, wishlist_id: input.wishlist_id } }; }
+      return { summary: `Opprettet listen «${row.name}»`, action: { kind: "list", op: "create", id: row.id, after: row } }; }
+    case "update_list": { const id = await resolveRef(env, "list", input.ref); const r = await db.updateList(env, id, input);
+      return { summary: `Oppdaterte listen «${r.after.name}»`, action: { kind: "list", op: "update", id, before: r.before, after: r.after } }; }
+    case "delete_list": { const id = await resolveRef(env, "list", input.ref); const r = await db.deleteList(env, id);
+      return { summary: `Slettet listen «${r.before.name}»`, action: { kind: "list", op: "delete", id, before: r.before } }; }
+    case "add_to_list": { const lid = await resolveRef(env, "list", input.list_ref); const wid = await resolveRef(env, "wishlist", input.wishlist_ref);
+      await db.addToList(env, lid, wid, input.qty);
+      return { summary: `La mangel i liste`, action: { kind: "list_item", op: "add", list_id: lid, wishlist_id: wid } }; }
+    case "remove_from_list": { const lid = await resolveRef(env, "list", input.list_ref); const wid = await resolveRef(env, "wishlist", input.wishlist_ref);
+      await db.removeFromList(env, lid, wid);
+      return { summary: `Fjernet mangel fra liste`, action: { kind: "list_item", op: "remove", list_id: lid, wishlist_id: wid } }; }
+
+    // ── Godkjente merker ──
     case "add_brand": { const row = await db.createBrand(env, input);
-      return { summary: `La til merket ${row.name} (${row.id})`, action: { kind: "brand", op: "create", id: row.id, after: row } }; }
-    case "add_option": { const row = await db.createOption(env, input.wishlist_id, input);
-      return { summary: `La til alternativ ${row.brand} ${row.model} (${row.id})`, action: { kind: "option", op: "create", id: row.id, after: row } }; }
+      return { summary: `La til merket ${row.name}`, action: { kind: "brand", op: "create", id: row.id, after: row } }; }
+    case "update_brand": { const id = await resolveRef(env, "brand", input.ref); const r = await db.updateBrand(env, id, input);
+      return { summary: `Oppdaterte merket ${r.after.name}`, action: { kind: "brand", op: "update", id, before: r.before, after: r.after } }; }
+    case "delete_brand": { const id = await resolveRef(env, "brand", input.ref); const r = await db.deleteBrand(env, id);
+      return { summary: `Slettet merket ${r.before.name}`, action: { kind: "brand", op: "delete", id, before: r.before } }; }
+
+    // ── Alternativer ──
+    case "add_option": { const wid = await resolveRef(env, "wishlist", input.wishlist_ref); const row = await db.createOption(env, wid, input);
+      return { summary: `La til alternativ ${[row.brand, row.model].filter(Boolean).join(" ")}`, action: { kind: "option", op: "create", id: row.id, after: row } }; }
+    case "update_option": { const id = await resolveRef(env, "option", input.ref); const r = await db.updateOption(env, id, input);
+      return { summary: `Oppdaterte alternativ`, action: { kind: "option", op: "update", id, before: r.before, after: r.after } }; }
+    case "delete_option": { const id = await resolveRef(env, "option", input.ref); const r = await db.deleteOption(env, id);
+      return { summary: `Slettet alternativ`, action: { kind: "option", op: "delete", id, before: r.before } }; }
+
     default: throw new Error("Ukjent verktøy: " + name);
   }
 }
@@ -169,19 +261,50 @@ export async function chat(request, env) {
   const userMessages = (b.messages || []).map((m) => ({ role: m.role, content: m.content }));
 
   const [inv, wish, lists, brands] = await Promise.all([db.listInventory(env), db.listWishlist(env), db.listLists(env), db.listBrands(env)]);
-  const system = `Du er assistenten til slagverkseksjonen i Randaberg Musikkorps.
-Du holder orden på inventar, mangler, innkjøpslister og godkjente merker. Svar kort og på norsk.
+  const today = new Date().toISOString().slice(0, 10);
+  const examples = FEWSHOT.length
+    ? "EKSEMPLER (melding → hva du bør gjøre)\n" + FEWSHOT.map((e) => `- «${e.user}» → ${e.action}`).join("\n") + "\n\n"
+    : "";
+  const system = `Du er assistenten til slagverkseksjonen i Randaberg Musikkorps. Svar kort og på norsk.
+Dagens dato: ${today}.
 
-Du KAN og SKAL bruke verktøyene til å utføre endringer direkte når brukeren ber om
-det (legge til utstyr, registrere en mangel, opprette/fylle en innkjøpsliste, osv.).
-Ikke be om bekreftelse – gjør endringen og fortell kort hva du gjorde. Bruk
-eksisterende id-er fra dataene under når du oppdaterer/sletter/kobler. Hvis noe er
-en erstatning for utstyr vi har i dårlig stand, sett replaces_inventory_id.
+OPPGAVE
+Du holder orden på inventar, mangler, innkjøpslister og godkjente merker, og bruker
+verktøyene til å utføre endringer direkte. Du har FULL tilgang: opprette, oppdatere
+og slette inventar, mangler, alternativer, innkjøpslister og merker. Ikke be om
+bekreftelse for klare forespørsler – gjør endringen og fortell kort hva du gjorde.
+Når du oppdaterer/sletter/kobler kan du oppgi id fra DATA, eller bare navnet/typen
+(f.eks. «Majestic», «xylofonen») – appen slår opp riktig rad og spør hvis flere matcher.
 
-Gyldige verdier: kategori = Trommer|Melodisk|Pauker|Cymbaler|Stativer|Perkusjon,
-status = ok|redusert|ødelagt, kvalitet = bra|greit|dårlig|ukjent, prioritet = høy|middels|lav.
+DATAMODELL
+- Inventar = utstyr vi eier (type, merke, kategori, status, kvalitet, merknader).
+- Mangel = noe vi ønsker/trenger å kjøpe. En mangel kan ha flere ALTERNATIVER
+  (konkrete produkter med pris). Skal mangelen erstatte et eksisterende utstyr i
+  dårlig stand, sett replaces_inventory_id (da er det en «erstatning», ellers en
+  vanlig «mangel»).
+- Innkjøpsliste = navngitt samling mangler man kjøper sammen, med egen sum/budsjett.
+  Samme mangel kan ligge i flere lister.
+- Godkjente merker = foretrukne leverandører, gruppert etter utstyrstype.
 
-Nåværende inventar: ${JSON.stringify(inv)}
+GYLDIGE VERDIER
+kategori = Trommer|Melodisk|Pauker|Cymbaler|Stativer|Perkusjon
+status = ok|redusert|ødelagt · kvalitet = bra|greit|dårlig|ukjent · prioritet = høy|middels|lav
+
+PLASSERING I KATEGORI (hint)
+- Trommer: skarptromme, stortromme/grand casa, trommesett, bongos, congas
+- Melodisk: xylofon, vibrafon, klokkespill, rørklokker, marimba
+- Pauker: pauke, paukestol
+- Cymbaler: suspended cymbal, tam tam, ride/crash/hi-hat
+- Stativer: stikkebord, notestativ
+- Perkusjon: tamburin, belltree, woodblock, triangel, shaker, cajon
+
+TVETYDIGHET
+Handle direkte når det er klart. Hvis flere ting matcher (f.eks. to like
+«Suspended cymbal») eller du er usikker på hva brukeren mener, still ETT kort
+oppfølgingsspørsmål før du endrer – ikke gjett.
+
+${examples}DATA
+Inventar: ${JSON.stringify(inv)}
 Mangler (med alternativer): ${JSON.stringify(wish)}
 Innkjøpslister: ${JSON.stringify(lists)}
 Godkjente merker: ${JSON.stringify(brands)}`;

@@ -32,8 +32,12 @@ wrangler.toml         Worker + [assets]=public/ + D1-binding DB
 - **Legg ALL datalogikk i `src/db.js`.** Ruter og AI-verktøy skal kalle de samme
   funksjonene – aldri duplisere SQL. Funksjoner kaster `ValidationError` ved
   ugyldig input; kallere mapper til HTTP 400 / tool_result-feil.
-- **Auth:** hvert endepunkt starter med `requireAuth(request, env)`. Klienten
-  sender felles kode i `x-access-code`. Ingen per-bruker-pålogging.
+- **Auth (viktig):** HVERT `/api/`-endepunkt MÅ starte med `requireAuth(request, env)`
+  – legger du til en ny rute, gjør det samme. Klienten sender felles kode i
+  `x-access-code`. `checkAuth` er **fail closed**: er `ACCESS_CODE` ikke satt, nektes
+  alt (appen er aldri åpen). Ingen per-bruker-pålogging. Frontend husker koden i
+  `localStorage` (vedvarende på enheten), og logger automatisk ut ved 401 (f.eks.
+  hvis koden endres).
 - **Feilkoder:** 400 validering, 401 tilgang, 404 ukjent id/sti, 405 feil metode,
   502 ekstern tjeneste. Feilsvar: `{ "error": "<melding>" }`.
 - **Språk:** alt brukervendt er på **norsk (bokmål)**. Kode/kommentarer norsk er ok.
@@ -98,6 +102,12 @@ Full tabell-spec: [docs/datamodell-og-api.md](docs/datamodell-og-api.md).
     `AI_BASE_URL`.
   - Verktøy defineres **én gang** (`TOOLS`, Anthropic-form) og konverteres til
     OpenAI-form (`OPENAI_TOOLS`). `runTool()` er delt mellom begge stier.
+  - **Full CRUD-paritet:** modellen har verktøy for å opprette/oppdatere/slette alt
+    appen kan (inventar, mangler, alternativer, lister, merker). Legger du en ny
+    handling i appen, legg også et verktøy + `runTool`-case for den.
+  - Skjema bruker `enum` for kategori/status/kvalitet/prioritet. Oppdater/slett tar
+    en `ref` = id ELLER navn/type; `resolveRef()` slår opp riktig rad og kaster en
+    «flere matcher»-feil (som modellen kan stille oppfølgingsspørsmål ut fra) ved tvetydighet.
 
 ## Tema / design
 

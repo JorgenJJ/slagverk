@@ -14,7 +14,7 @@ const QUALITY_RANK = { bra: 4, greit: 3, dårlig: 2, ukjent: 0 };
 const TABS = [["oversikt", "Oversikt"], ["mangler", "Mangler"], ["lister", "Innkjøpslister"], ["merker", "Merker"], ["generer", "Generér oversikt"]];
 
 const state = {
-  code: sessionStorage.getItem("slagverk_code") || "",
+  code: localStorage.getItem("slagverk_code") || "",
   tab: "oversikt",
   inventory: [], wishlist: [], lists: [], brands: [],
   filters: { category: [], status: [], quality: [], brand: [] },
@@ -68,12 +68,12 @@ async function loadAll() {
 async function login(code) {
   state.code = code;
   await api("/login", { method: "POST" });
-  sessionStorage.setItem("slagverk_code", code);
+  localStorage.setItem("slagverk_code", code);
   await loadAll();
 }
 function logout() {
   state.code = ""; state.chatOpen = false;
-  sessionStorage.removeItem("slagverk_code");
+  localStorage.removeItem("slagverk_code");
   render();
 }
 
@@ -227,20 +227,21 @@ async function sendChat(text) {
 }
 async function undoActions() {
   const acts = [...state.lastActions].reverse(); state.lastActions = [];
+  const COLL = { inventory: "/inventory", wishlist: "/wishlist", list: "/lists", brand: "/brands", option: "/options" };
   for (const a of acts) {
     try {
-      if (a.kind === "inventory" || a.kind === "wishlist") {
-        const base = "/" + a.kind;
-        if (a.op === "create") await api(`${base}/${a.id}`, { method: "DELETE" });
-        else if (a.op === "update") await api(`${base}/${a.id}`, { method: "PUT", body: JSON.stringify(a.before) });
-        else if (a.op === "delete") await api(base, { method: "POST", body: JSON.stringify(a.before) });
-      } else if ((a.kind === "list" || a.kind === "brand") && a.op === "create") {
-        await api(`/${a.kind === "brand" ? "brands" : "lists"}/${a.id}`, { method: "DELETE" });
-      } else if (a.kind === "option" && a.op === "create") {
-        await api(`/options/${a.id}`, { method: "DELETE" });
-      } else if (a.kind === "list_item") {
+      if (a.kind === "list_item") {
         if (a.op === "add") await api(`/lists/${a.list_id}/items/${a.wishlist_id}`, { method: "DELETE" });
-        else if (a.op === "remove") await api(`/lists/${a.list_id}/items`, { method: "POST", body: JSON.stringify({ wishlist_id: a.wishlist_id }) });
+        else await api(`/lists/${a.list_id}/items`, { method: "POST", body: JSON.stringify({ wishlist_id: a.wishlist_id }) });
+        continue;
+      }
+      const coll = COLL[a.kind];
+      if (a.op === "create") await api(`${coll}/${a.id}`, { method: "DELETE" });
+      else if (a.op === "update") await api(`${coll}/${a.id}`, { method: "PUT", body: JSON.stringify(a.before) });
+      else if (a.op === "delete") {
+        // Gjenopprett slettet rad fra `before` (createX beholder id-en).
+        if (a.kind === "option") await api(`/wishlist/${a.before.wishlist_id}/options`, { method: "POST", body: JSON.stringify(a.before) });
+        else await api(coll, { method: "POST", body: JSON.stringify(a.before) });
       }
     } catch { /* fortsett */ }
   }

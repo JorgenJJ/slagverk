@@ -74,12 +74,17 @@ Du får en adresse som `slagverk.<konto>.workers.dev`.
 Worker-prosjekt → **Settings → Bindings**: `DB` skal peke på `slagverk-db`.
 (Definert i `wrangler.toml`; bekreft at den er aktiv etter første deploy.)
 
-### 6. Sett tilgangskoden
+### 6. Sett tilgangskoden (påkrevd)
 ```bash
 npx wrangler secret put ACCESS_CODE
 ```
 …eller i dashbordet: Worker → **Settings → Variables and Secrets** → legg til
 `ACCESS_CODE` som **Secret**. Redeploy om nødvendig. Ferdig.
+
+> **Obligatorisk.** API-et er *fail closed*: uten `ACCESS_CODE` returnerer alle
+> endepunkter `401`, og appen virker ikke. Alle `/api/`-kall krever koden, så
+> ingen kan bruke endepunktene uten å være logget inn. Innloggingen huskes på
+> enheten (`localStorage`) til koden endres.
 
 ---
 

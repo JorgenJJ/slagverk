@@ -114,6 +114,7 @@ export async function deleteWishlist(env, id) {
   const before = await getWishlist(env, id);
   if (!before) return null;
   await env.DB.prepare("DELETE FROM list_items WHERE wishlist_id = ?").bind(id).run();
+  await env.DB.prepare("DELETE FROM wishlist_options WHERE wishlist_id = ?").bind(id).run();
   await env.DB.prepare("DELETE FROM wishlist WHERE id = ?").bind(id).run();
   return { before };
 }

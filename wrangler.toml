@@ -22,4 +22,4 @@ database_id = "1d541466-262e-4b69-a8bd-090649a78900"
 [vars]
 AI_PROVIDER = "openai"
 AI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
-AI_MODEL    = "gemini-2.5-flash-lite"
+AI_MODEL    = "claude-haiku-4-5"

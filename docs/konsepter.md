@@ -18,11 +18,20 @@ To veier til samme mål:
 
 ## Tilgang
 
-Felles kode for hele seksjonen (ikke per bruker). Lagres som secret
-`ACCESS_CODE`; frontend sender den som `x-access-code` og husker den i
-`sessionStorage`. Validering i `checkAuth()` (konstant-tid-ish). Settes ikke
-koden, er appen **åpen** – så den *må* settes i produksjon. Felles kode er ikke
-ekte innlogging; akseptert for v1.
+Felles kode for hele seksjonen (ikke per bruker). Lagres som secret `ACCESS_CODE`;
+frontend sender den som `x-access-code`-header på **hvert** API-kall.
+
+- **Alle endepunkter er låst.** Hver `/api/`-handler kaller `requireAuth` først, så
+  ingen kan gjette/bruke et endepunkt uten gyldig kode. Feil/manglende kode → `401`.
+- **Fail closed.** Er `ACCESS_CODE` ikke konfigurert, nektes alt – appen er aldri
+  åpen. Koden *må* settes som secret i produksjon, ellers virker ingenting.
+- **Vedvarende innlogging.** Koden huskes i `localStorage`, så man forblir innlogget
+  på samme enhet til man logger ut – eller til koden endres (da gir API `401` og
+  frontend logger automatisk ut).
+- Validering i `checkAuth()` med konstant-tid-ish sammenligning.
+
+Felles kode er ikke ekte per-bruker-innlogging; akseptert for formålet. (Mulig
+framtidig herding: rate-limiting av innlogging for å bremse gjetting.)
 
 ## Koblinger mellom ting
 
@@ -86,6 +95,12 @@ Modellen får gjeldende inventar, mangler og lister som kontekst, og et sett
    sender `tool_result` tilbake.
 3. Loop til modellen er ferdig; returnér kort svar + liste over `actions`.
 
+**Full tilgang:** assistenten har verktøy for å opprette, oppdatere og slette alt
+appen kan – inventar, mangler, alternativer, innkjøpslister og merker. Skjemaet
+bruker `enum` for gyldige verdier, og oppdater/slett tar en `ref` som er **id
+eller bare navnet/typen** («Majestic», «xylofonen») – `resolveRef` slår opp riktig
+rad og ber om presisering hvis flere matcher (så modellen slipper å gjette id-er).
+
 **Autonomi:** assistenten utfører endringer **direkte** (ikke «foreslå-så-bekreft»),
 slik at det går raskt på mobil. Hver endring registreres i `actions`, og frontend
 viser en **«Angre»**-knapp som reverserer dem via de vanlige CRUD-endepunktene.
@@ -129,6 +144,15 @@ AI_API_KEY  = <Google AI Studio-nøkkel>
 **Pris:** for dette volumet er kostnaden forsvinnende uansett (øre per handling med
 Gemini Flash-Lite / GPT-nano; ~10× det med Haiku; ~0 kr på Workers AI innen
 dagskvote). Velg etter pålitelighet på norsk tool calling, ikke pris.
+
+**Gratisnivå-grense:** Gemini sitt gratisnivå for `gemini-2.5-flash-lite` er ca.
+**20 forespørsler/dag** (per modell). Greit til sporadisk bruk, men slå på fakturering
+(betalt nivå) for høyere grenser – kostnaden er fortsatt ~1 øre per handling.
+
+**Forståelse/intensjon:** systempromten i `chat.js` gir modellen en datamodell-
+forklaring, kategori-hint, dato og en regel om å spørre ved tvetydighet. Egne
+få-skudd-eksempler kan legges i `FEWSHOT`-lista (tom som standard) for å lære den
+typiske norske fraseringer → riktige verktøykall.
 
 ## Godkjente merker
 
