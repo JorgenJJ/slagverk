@@ -19,7 +19,7 @@ import * as db from "../db.js";
 //                 "https://generativelanguage.googleapis.com/v1beta/openai"
 
 const DEFAULT_MODEL = { anthropic: "claude-haiku-4-5-20251001", openai: "gpt-4.1-nano" };
-const MAX_STEPS = 6; // verktøy-runder per melding
+const MAX_STEPS = 16; // verktøy-runder per melding (større jobber trenger mange runder)
 
 const CAT = ["Trommer", "Melodisk", "Pauker", "Cymbaler", "Stativer", "Perkusjon"];
 const BRANDCAT = ["Generelt", ...CAT];
@@ -217,14 +217,15 @@ async function anthropicLoop(env, system, userMessages) {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": env.AI_API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model, max_tokens: 1024, system, tools: TOOLS, messages }),
+      body: JSON.stringify({ model, max_tokens: 2048, system, tools: TOOLS, messages }),
     });
     if (!resp.ok) throw new Error(await resp.text());
     const data = await resp.json();
     const content = data.content || [];
     for (const c of content) if (c.type === "text" && c.text.trim()) texts.push(c.text.trim());
     const toolUses = content.filter((c) => c.type === "tool_use");
-    if (data.stop_reason !== "tool_use" || !toolUses.length) break;
+    // Kjør verktøykall når de finnes – også hvis svaret ble avkuttet (max_tokens).
+    if (!toolUses.length) break;
     messages.push({ role: "assistant", content });
     const results = [];
     for (const tu of toolUses) {
@@ -247,7 +248,7 @@ async function openaiLoop(env, system, userMessages) {
     const resp = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.AI_API_KEY}` },
-      body: JSON.stringify({ model, max_tokens: 1024, messages, tools: OPENAI_TOOLS, tool_choice: "auto" }),
+      body: JSON.stringify({ model, max_tokens: 2048, messages, tools: OPENAI_TOOLS, tool_choice: "auto" }),
     });
     if (!resp.ok) throw new Error(await resp.text());
     const data = await resp.json();
@@ -307,6 +308,13 @@ og slette inventar, mangler, alternativer, innkjøpslister og merker. Ikke be om
 bekreftelse for klare forespørsler – gjør endringen og fortell kort hva du gjorde.
 Når du oppdaterer/sletter/kobler kan du oppgi id fra DATA, eller bare navnet/typen
 (f.eks. «Majestic», «xylofonen») – appen slår opp riktig rad og spør hvis flere matcher.
+
+UTFØR, IKKE BARE FORTELL: Du MÅ faktisk kalle verktøyene. Ikke skriv «nå søker jeg
+…» eller «nå legger jeg til …» uten å samtidig gjøre verktøykallet – tekst alene
+endrer ingenting. Ved større jobber (flere mangler, søk + alternativer): jobb deg
+gjennom til ALT er gjort – ett verktøykall om gangen er helt greit, og du kan bruke
+mange runder. Ikke avslutt før alle delene er utført. Trenger du å søke opp et
+produkt, kall search_store og bruk deretter add_option med den ekte URL-en.
 
 BUTIKKER OG LENKER
 Foretrukne butikker: ${stores.join(", ")}.

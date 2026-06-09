@@ -267,7 +267,7 @@ function render() {
   root.innerHTML = `
     <header><div class="bar"><div class="brand">
       ${logo(44, "white")}
-      <div class="titles"><h1>Slagverksoversikt</h1><small>Randaberg Musikkorps · est. 1979</small></div>
+      <div class="titles"><h1>Slagverksoversikt</h1><small>Randaberg Musikkorps</small></div>
       <div class="spacer"></div>
       <button class="logout" data-act="logout">Logg ut</button>
     </div></div>
@@ -447,6 +447,7 @@ function viewMangler() {
         <div class="opt-price price">${fmt(o.price)}</div>
       </div>`).join("") : `<div class="opt empty">Ingen alternativer lagt inn ennå.</div>`}
       <div class="opt-actions">
+        <button class="btn ghost sm" data-edit-wish="${w.id}">✎ Rediger mangel (type, prioritet …)</button>
         <button class="btn ghost sm" data-addopt="${w.id}">+ Alternativ</button>
         <button class="btn ghost sm" data-addtolist="${w.id}|">+ Legg mangel i liste</button>
       </div>
@@ -485,8 +486,7 @@ function viewMangler() {
             <span class="price">${priceDisplay(w)}</span>
           </div>
           <div class="chiprow">${listChips(w)}</div>
-          ${open ? optionsBlock(w) : ""}
-          <div class="chiprow" style="margin-top:8px"><span class="link-chip" data-edit-wish="${w.id}">Rediger mangel</span></div>
+          ${open ? optionsBlock(w) : `<div class="chiprow" style="margin-top:8px"><span class="link-chip" data-edit-wish="${w.id}">✎ Rediger mangel</span></div>`}
         </div>`;
       }).join("")}</div>`;
     }).join("") || `<p style="color:var(--muted)">Ingen mangler registrert.</p>`}`;
