@@ -18,8 +18,16 @@ database_id = "1d541466-262e-4b69-a8bd-090649a78900"
 
 # AI-assistent. Ikke-hemmelige variabler ligger her (versjonskontrollert).
 # AI_API_KEY skal IKKE stå her – sett den som secret: `npx wrangler secret put AI_API_KEY`
-# (i prod) og i .dev.vars (lokalt). Bruker Google Gemini 2.5 Flash-Lite:
+# (i prod) og i .dev.vars (lokalt).
+#
+# Aktiv: Anthropic Claude Haiku. AI_API_KEY må være en Anthropic-nøkkel (sk-ant-…).
 [vars]
-AI_PROVIDER = "openai"
-AI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
-AI_MODEL    = "claude-haiku-4-5"
+AI_PROVIDER = "anthropic"
+AI_MODEL    = "claude-haiku-4-5-20251001"
+
+# For Google Gemini i stedet: kommenter ut de tre over, fjern kommentar her,
+# og sett AI_API_KEY til en Google-nøkkel.
+# [vars]
+# AI_PROVIDER = "openai"
+# AI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+# AI_MODEL    = "gemini-2.5-flash-lite"
