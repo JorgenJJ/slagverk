@@ -1,4 +1,4 @@
-# Slagverk Inventar – Mål, bakgrunn og migreringsplan
+# Slagverksoversikt – Mål, bakgrunn og migreringsplan
 
 **Randaberg Musikkorps – slagverkseksjonen**
 Versjon 1.0 · Planutkast til godkjenning

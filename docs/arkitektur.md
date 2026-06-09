@@ -18,13 +18,21 @@ public/                     ← PWA-frontend (Workers static assets)
 src/                        ← Worker (API-laget)
   index.js                    fetch-inngangspunkt + ruter for /api/*
   helpers.js                  json(), err(), checkAuth(), requireAuth(), newId()
+  db.js                       all lese-/skrivelogikk (delt av REST + AI-verktøy)
   routes/
     login.js                  POST   /api/login
     inventory.js              GET/POST /api/inventory, PUT/DELETE /api/inventory/:id
     wishlist.js               GET/POST /api/wishlist,  PUT/DELETE /api/wishlist/:id
-    chat.js                   POST   /api/chat  (AI – v2, krever AI_API_KEY)
+    lists.js                  CRUD /api/lists (+ /:id/items) – innkjøpslister
+    brands.js                 CRUD /api/brands – godkjente merker
+    options.js                /api/wishlist/:id/options, /api/options/:id – alternativer
+    price.js                  POST /api/price – henter pris fra leverandørlenke
+    chat.js                   POST /api/chat  – Haiku med tool use (krever AI_API_KEY)
 
-migrations/0001_init.sql    ← D1-skjema + seed-data (inventar + mangler)
+migrations/
+  0001_init.sql               D1-skjema + seed (inventar + mangler)
+  0002_lists_and_links.sql    innkjøpslister, list_items, replaces_inventory_id
+  0003_brands_and_options.sql godkjente merker, mangel-alternativer, option_id
 wrangler.toml               ← Worker-, assets- og D1-konfigurasjon
 ```
 
@@ -54,6 +62,18 @@ Forespørsel
 - **Static assets** er konfigurert med `not_found_handling =
   "single-page-application"`, så ukjente stier (utenom `/api/`) faller tilbake til
   `index.html`. Bindingen `ASSETS` lar Worker-en hente assets ved fallthrough.
+- **Datatilgang** er samlet i `src/db.js`. Både REST-rutene og AI-chattens
+  verktøy (tool use) bruker nøyaktig de samme funksjonene, så manuell redigering
+  og AI-styrt redigering oppfører seg likt.
+
+## Design
+
+Visuelt tema er hentet fra Randaberg-merket (rødt skjold, hvitt, est. 1979):
+«regimental heritage». Pergament-papir som flate, dempet korpsrødt som signal
+(header, aktiv fane, primærknapp – ikke som store fargeflater), messing/gull som
+heritage-aksent (pris, detaljer). Typografi: **Fraunces** (display) + **Hanken
+Grotesk** (UI). Et inline-SVG-skjold med perkusjon-motiv brukes som logo. Målet er
+rolig, lesbart UI – ikke grelle farger.
 
 ## Distribusjon
 

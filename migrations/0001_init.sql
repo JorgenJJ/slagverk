@@ -1,4 +1,4 @@
--- Slagverk Inventar – database schema for Cloudflare D1
+-- Slagverksoversikt – database schema for Cloudflare D1
 -- Run: wrangler d1 migrations apply slagverk-db
 
 DROP TABLE IF EXISTS inventory;

@@ -1,5 +1,13 @@
 # Mål og bakgrunn
 
+## Det viktigste målet: lav friksjon
+
+Appen skal gjøre det **veldig enkelt å legge til og endre** når man oppdager et
+behov – på en øvelse, i lageret, eller når man ser at noe mangler. Selve
+registreringen skal være rask (gjerne via AI-assistenten, som utfører endringen
+selv), slik at appen ellers i hovedsak brukes til å **se gjennom og eksportere**.
+Se [konsepter.md](konsepter.md#kjernefunksjon-raskt-å-endre-når-behovet-oppstår).
+
 ## Hovedmål
 
 Gi slagverkseksjonen ett samlet, alltid oppdatert verktøy for å:

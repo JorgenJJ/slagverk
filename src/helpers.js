@@ -30,6 +30,12 @@ export function requireAuth(request, env) {
   return null;
 }
 
+// Opake, kollisjonssikre ID-er. Prefiks beholdes kun for lesbarhet i logger/
+// eksport – ID-er vises ikke i UI og skal ikke tolkes. crypto.randomUUID finnes
+// i Workers-runtime; enkel fallback for eldre miljø.
 export function newId(prefix) {
-  return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const uuid = (globalThis.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}-${uuid}`;
 }

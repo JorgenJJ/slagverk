@@ -1,4 +1,4 @@
-# Slagverk Inventar – Randaberg Musikkorps
+# Slagverksoversikt – Randaberg Musikkorps
 
 Inventar-, mangel- og innkjøpsapp for slagverkseksjonen. Kjører som én **Cloudflare
 Worker** med **static assets** (statisk PWA-frontend) + **D1** (database). Ingen
