@@ -1,4 +1,5 @@
-// Felles hjelpefunksjoner for API-et
+// Felles hjelpefunksjoner for API-et.
+// Uendret fra Pages-versjonen (functions/api/_helpers.js) – samme logikk.
 
 export function json(data, status = 200) {
   return new Response(JSON.stringify(data), {

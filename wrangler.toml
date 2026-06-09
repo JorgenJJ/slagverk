@@ -1,8 +1,16 @@
 name = "slagverk-inventar"
+main = "src/index.js"
 compatibility_date = "2025-01-01"
-pages_build_output_dir = "public"
 
-# D1-database. Lim inn database_id etter `wrangler d1 create slagverk-db`.
+# Static assets (PWA-frontend). Erstatter Pages-modellen `pages_build_output_dir`.
+# Filer i public/ serveres direkte; ukjente stier faller tilbake til index.html
+# (SPA), og bindingen ASSETS lar Worker-en hente dem ved fallthrough.
+[assets]
+directory = "public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# D1-database. Uendret fra Pages-versjonen.
 [[d1_databases]]
 binding = "DB"
 database_name = "slagverk-db"

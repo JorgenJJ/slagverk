@@ -1,10 +1,10 @@
-import { json, err, requireAuth } from "./_helpers.js";
+import { json, err, requireAuth } from "../helpers.js";
 
 // POST /api/chat  → AI-assistent (v2)
 // Aktiveres ved å sette secret AI_API_KEY (Anthropic-nøkkel).
 // Modellen får verktøy-beskrivelse av databasen og kan foreslå endringer
 // som JSON; appen utfører dem etter brukerbekreftelse.
-export async function onRequestPost({ request, env }) {
+export async function chat(request, env) {
   const unauth = requireAuth(request, env);
   if (unauth) return unauth;
 
