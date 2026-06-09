@@ -103,13 +103,32 @@ byttes uten kodeendring.
 | **Haiku 4.5** *(standard)* | Brukervendt chat, lav latens, enkle verktøykall | ~$1 inn / $5 ut |
 | Sonnet 4.6 | Hvis Haiku bommer på flertrinns/uklare forespørsler | ~$3 inn / $15 ut (3× dyrere) |
 
-**Anbefaling:** behold **Haiku 4.5** som standard. Oppgavene her er enkle,
-strukturerte verktøykall på norsk der fart og lav kostnad teller mest – Haiku er
-4–5× raskere og 3× billigere enn Sonnet, og håndterer tool use godt. Bytt til
-Sonnet via `AI_MODEL` kun hvis assistenten viser seg upålitelig på mer sammensatte
-forespørsler. (Andre leverandører som OpenAI/Gemini ville krevd en annen
-integrasjon i `chat.js`; ikke verdt det for dette behovet nå.) Kostnad ved normal
-bruk: brøkdeler av et øre per melding.
+### Leverandør (Anthropic eller OpenAI-kompatibel)
+
+`chat.js` har to stier, valgt med env:
+
+| Env | Verdi |
+|---|---|
+| `AI_PROVIDER` | `anthropic` (standard) eller `openai` |
+| `AI_API_KEY` | nøkkel/bearer-token (påkrevd) |
+| `AI_MODEL` | modell-id, f.eks. `gemini-2.5-flash-lite` |
+| `AI_BASE_URL` | **kun OpenAI-stien** – base-URL til et OpenAI-kompatibelt endepunkt |
+
+OpenAI-stien er OpenAI-kompatibel og funker mot OpenAI, **Google Gemini**
+(`https://generativelanguage.googleapis.com/v1beta/openai`), Cloudflare Workers AI,
+Groq, DeepSeek m.fl. – bytt leverandør uten kodeendring.
+
+**Oppsett Gemini 2.5 Flash-Lite** (billig, god norsk, moden function calling):
+```
+AI_PROVIDER = openai
+AI_BASE_URL = https://generativelanguage.googleapis.com/v1beta/openai
+AI_MODEL    = gemini-2.5-flash-lite
+AI_API_KEY  = <Google AI Studio-nøkkel>
+```
+
+**Pris:** for dette volumet er kostnaden forsvinnende uansett (øre per handling med
+Gemini Flash-Lite / GPT-nano; ~10× det med Haiku; ~0 kr på Workers AI innen
+dagskvote). Velg etter pålitelighet på norsk tool calling, ikke pris.
 
 ## Godkjente merker
 

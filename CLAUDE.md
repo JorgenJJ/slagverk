@@ -85,11 +85,19 @@ Full tabell-spec: [docs/datamodell-og-api.md](docs/datamodell-og-api.md).
 
 ## AI-assistenten
 
-- `POST /api/chat`: Haiku med **tool use**. Modellen får data som kontekst +
+- `POST /api/chat`: LLM med **tool use**. Modellen får data som kontekst +
   verktøy, utfører endringer **direkte** (ikke foreslå-bekreft) og returnerer
   `actions` som frontend kan **angre**.
-- Modell settes med env/secret **`AI_MODEL`** (fallback i `chat.js`). Bytt til en
-  Sonnet-id for høyere presisjon mot høyere pris. Krever `AI_API_KEY`.
+- **To leverandør-stier** i `chat.js`, valgt med env:
+  - `AI_PROVIDER` = `anthropic` (standard) | `openai`. (openai brukes også auto
+    hvis `AI_BASE_URL` er satt.)
+  - Anthropic-stien snakker med Messages API. OpenAI-stien er **OpenAI-kompatibel**
+    og funker mot OpenAI, Google Gemini (`…/v1beta/openai`), Cloudflare Workers AI,
+    Groq, DeepSeek m.fl.
+  - Felles env: `AI_API_KEY` (påkrevd), `AI_MODEL` (modell-id). OpenAI-sti:
+    `AI_BASE_URL`.
+  - Verktøy defineres **én gang** (`TOOLS`, Anthropic-form) og konverteres til
+    OpenAI-form (`OPENAI_TOOLS`). `runTool()` er delt mellom begge stier.
 
 ## Tema / design
 

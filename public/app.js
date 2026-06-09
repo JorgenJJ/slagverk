@@ -686,7 +686,7 @@ function renderDock() {
           <div><div class="t">Assistent</div><div class="sub">Legger til / endrer for deg</div></div>
           <button class="close" data-act="close-chat">×</button></div>
         <div class="chat-log" id="chatLog">
-          ${state.chat.length === 0 ? `<div class="msg ai"><div class="bubble">Hei! Si fra hva du oppdager – f.eks. «xylofonen er ødelagt», «legg til en ny tamburin», eller «lag en innkjøpsliste for NM med paukene». Jeg fikser det. (Krever at AI_API_KEY er satt i Cloudflare.)</div></div>` : ""}
+          ${state.chat.length === 0 ? `<div class="msg ai"><div class="bubble">Hei! Si fra hva du oppdager – f.eks. «xylofonen er ødelagt», «legg til en ny tamburin», eller «lag en innkjøpsliste for NM med paukene». Jeg fikser det.</div></div>` : ""}
           ${state.chat.map((m) => `<div class="msg ${m.role === "user" ? "user" : "ai"}"><div class="bubble">${esc(m.content)}</div></div>`).join("")}
           ${state.chatBusy ? `<div class="msg ai"><div class="bubble">…</div></div>` : ""}
         </div>
