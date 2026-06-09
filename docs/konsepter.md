@@ -80,13 +80,18 @@ Erfaring fra musikk-miljø.no:
   masseimport av hele katalogen er ikke mulig med enkel fetch. Derfor: pris per
   vare via lenke, ikke katalog-skraping.
 
-Endepunktet er låst til **foretrukne butikker** (env `PREFERRED_STORES`, komma-
-separert, standard musikk-miljø) for å hindre at det misbrukes som åpen proxy.
-Samme liste styrer hvor AI-chatten skal lenke: den er bedt om å **alltid legge ved
-en produktlenke** (`link`) til en foretrukken butikk når den legger inn alternativer
-eller foreslår produkter – og bruke en søkelenke (`/search?q=…`) når den ikke kjenner
-den eksakte produktsiden (siden modellen ikke kan surfe). Legg til flere butikker
-ved å utvide `PREFERRED_STORES`.
+Endepunktene er låst til **foretrukne butikker** (env `PREFERRED_STORES`, komma-
+separert, standard musikk-miljø) for å hindre at de misbrukes som åpen proxy. Felles
+butikk-logikk ligger i `src/store.js`.
+
+**Søk etter ekte produkter.** `GET /api/search?q=&limit=&start=` og AI-verktøyet
+`search_store` slår opp faktiske produkter med **navn, URL og pris**. For musikk-miljø
+brukes butikkens eget søk, **Hello Retail** (samme relevans som kundene ser, med
+**paginering** via `start`). Konfig per butikk ligger i `STORE_SEARCH` i `src/store.js`;
+butikker uten Hello Retail faller tilbake til nopCommerce autocomplete (med ord-
+fallback + filtrering på alle søkeord). AI-en bruker `search_store` for å finne
+produktet og setter den **eksakte produkt-URL-en** som `link` – ikke en søkelenke.
+Mangler prisen, hentes den automatisk fra lenken (`add_option`).
 
 ## AI-assistenten
 

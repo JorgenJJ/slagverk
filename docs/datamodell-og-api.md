@@ -105,6 +105,7 @@ Alt under `/api/`, JSON inn/ut, krever `x-access-code`-header.
 | `PUT/DELETE` | `/api/options/:id` | Oppdater / slett alternativ |
 | `GET/POST` | `/api/brands` | List / opprett godkjent merke |
 | `PUT/DELETE` | `/api/brands/:id` | Oppdater / slett merke |
+| `GET` | `/api/search?q=&limit=&start=` | Søk ekte produkter (Hello Retail, paginert) → `{results:[{name,url,price}]}` |
 | `POST` | `/api/price` | Hent pris fra leverandørlenke `{url}` → `{price, candidates}` |
 | `POST` | `/api/chat` | AI-assistent med tool use → `{reply, actions, configured}` |
 

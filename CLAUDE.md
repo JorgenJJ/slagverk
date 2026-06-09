@@ -17,8 +17,11 @@ frontend er ren HTML/CSS/JS. Mål: 0 kr/mnd, lav friksjon å registrere endringe
 src/index.js          Worker-entry: fetch() + rutetabell for /api/*
 src/helpers.js        json/err/checkAuth/requireAuth/newId
 src/db.js             ALL DB-logikk (delt av REST-ruter OG AI-verktøy)
-src/routes/*.js       tynne HTTP-wrappere over db.js (login, inventory, wishlist,
-                      lists, brands, options, price, chat)
+src/store.js          butikk-integrasjon: produktsøk (Hello Retail m/ paginering,
+                      nopCommerce-autocomplete som reserve) + prishenting. Per-butikk
+                      konfig i STORE_SEARCH. Delt av /api/search, /api/price, AI.
+src/routes/*.js       tynne HTTP-wrappere (login, inventory, wishlist, lists,
+                      brands, options, price, search, chat)
 migrations/000N_*.sql D1-skjema/seed (additivt – se under)
 public/index.html     skall (laster app.js + fonts + SheetJS)
 public/app.js         hele frontend (state + render(), vanilla JS)

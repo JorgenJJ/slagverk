@@ -11,6 +11,7 @@ import * as lists from "./routes/lists.js";
 import * as brands from "./routes/brands.js";
 import * as options from "./routes/options.js";
 import { price } from "./routes/price.js";
+import { search } from "./routes/search.js";
 import { chat } from "./routes/chat.js";
 
 const id = (m, i) => decodeURIComponent(m[i]);
@@ -48,6 +49,7 @@ const ROUTES = [
   { method: "DELETE", pattern: /^\/api\/lists\/([^/]+)$/,     handler: (req, env, m) => lists.remove(req, env, { id: id(m, 1) }) },
 
   { method: "POST",   pattern: /^\/api\/price\/?$/,           handler: (req, env) => price(req, env) },
+  { method: "GET",    pattern: /^\/api\/search\/?$/,          handler: (req, env) => search(req, env) },
   { method: "POST",   pattern: /^\/api\/chat\/?$/,            handler: (req, env) => chat(req, env) },
 ];
 

@@ -1,4 +1,5 @@
 import { json, err, requireAuth, preferredStores } from "../helpers.js";
+import { searchStore, fetchProductPrice } from "../store.js";
 import * as db from "../db.js";
 
 // ── AI-assistent (tool use) ──
@@ -92,6 +93,10 @@ const TOOLS = [
       ref: ref("alternativet (produsent/modell)"), brand: str(), model: str(), size: str(), info: str(), link: str(), price: num() } } },
   { name: "delete_option", description: "Slett et alternativ.",
     input_schema: { type: "object", required: ["ref"], properties: { ref: ref("alternativet") } } },
+
+  // Butikk-søk (les-verktøy – finner ekte produkter med URL)
+  { name: "search_store", description: "Søk opp EKTE produkter i de foretrukne butikkene (gir produktnavn + URL). Bruk dette FØR du legger inn et alternativ, så du kan bruke den eksakte produkt-URL-en.",
+    input_schema: { type: "object", required: ["query"], properties: { query: str("søkeord, f.eks. «black swamp tamburin»") } } },
 ];
 
 const OPENAI_TOOLS = TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
@@ -177,9 +182,23 @@ async function runTool(env, name, input) {
     case "delete_brand": { const id = await resolveRef(env, "brand", input.ref); const r = await db.deleteBrand(env, id);
       return { summary: `Slettet merket ${r.before.name}`, action: { kind: "brand", op: "delete", id, before: r.before } }; }
 
+    // ── Butikk-søk (les) ──
+    case "search_store": {
+      const results = await searchStore(env, input.query);
+      if (!results.length) return { summary: `Ingen treff for «${input.query}» i butikkene.` };
+      return { summary: "Ekte produkter (navn :: pris :: url):\n" + results.map((r) => `- ${r.name}${r.price ? ` :: ${r.price} kr` : ""} :: ${r.url}`).join("\n") };
+    }
+
     // ── Alternativer ──
-    case "add_option": { const wid = await resolveRef(env, "wishlist", input.wishlist_ref); const row = await db.createOption(env, wid, input);
-      return { summary: `La til alternativ ${[row.brand, row.model].filter(Boolean).join(" ")}`, action: { kind: "option", op: "create", id: row.id, after: row } }; }
+    case "add_option": {
+      const wid = await resolveRef(env, "wishlist", input.wishlist_ref);
+      // Auto-hent ekte pris fra lenken hvis pris ikke er oppgitt.
+      if (input.link && (input.price === undefined || input.price === null)) {
+        try { const pr = await fetchProductPrice(env, input.link); if (pr && pr.price) input.price = pr.price; } catch { /* uten pris er ok */ }
+      }
+      const row = await db.createOption(env, wid, input);
+      return { summary: `La til alternativ ${[row.brand, row.model].filter(Boolean).join(" ")}${row.price ? ` (${row.price} kr)` : ""}`, action: { kind: "option", op: "create", id: row.id, after: row } };
+    }
     case "update_option": { const id = await resolveRef(env, "option", input.ref); const r = await db.updateOption(env, id, input);
       return { summary: `Oppdaterte alternativ`, action: { kind: "option", op: "update", id, before: r.before, after: r.after } }; }
     case "delete_option": { const id = await resolveRef(env, "option", input.ref); const r = await db.deleteOption(env, id);
@@ -290,14 +309,14 @@ Når du oppdaterer/sletter/kobler kan du oppgi id fra DATA, eller bare navnet/ty
 (f.eks. «Majestic», «xylofonen») – appen slår opp riktig rad og spør hvis flere matcher.
 
 BUTIKKER OG LENKER
-Foretrukne butikker å sjekke for produkter og priser: ${stores.join(", ")}.
-Når du legger inn et alternativ (add_option), en mangel med et konkret produkt,
-eller foreslår/nevner et produkt, ta ALLTID med en lenke i link-feltet til produktet
-hos en foretrukken butikk. Du kan IKKE surfe på nett – ikke dikt opp en spesifikk
-produkt-URL. Kjenner du den nøyaktige produktsiden, bruk den; ellers bruk en
-søkelenke i butikken på produktnavnet, f.eks.
-https://www.musikk-miljo.no/search?q=pauke+adams (mellomrom = «+»). Brukeren kan
-trykke «Hent pris» etterpå for å hente faktisk pris fra lenken.
+Foretrukne butikker: ${stores.join(", ")}.
+Når du skal finne eller foreslå et konkret produkt (f.eks. et alternativ til en
+mangel): bruk FØRST verktøyet search_store med et kort søkeord. Det gir EKTE
+produkter med navn og URL fra butikken. Velg det som passer best, og bruk den
+EKSAKTE produkt-URL-en som link i add_option – da hentes prisen automatisk.
+Ikke dikt opp produkt-URL-er, og ikke nøy deg med en /search?q=-lenke når
+search_store finner et faktisk produkt. Bare hvis søket ikke gir noe relevant treff,
+kan du bruke en søkelenke (…/search?q=…) som siste utvei.
 
 DATAMODELL
 - Inventar = utstyr vi eier (type, merke, kategori, status, kvalitet, merknader).
