@@ -116,22 +116,34 @@ header { position: sticky; top: 0; z-index: 30; }
 }
 .brand .titles small { display: block; margin-top: 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.78); }
 .brand .spacer { flex: 1; }
-.logout {
+/* Header-handlinger: Generér-rapport + Logg ut (ikon-knapper, ingen emoji).
+   Label skjules på smal skjerm → kun ikon, så headeren alltid får plass. */
+.hactions { display: flex; align-items: center; gap: 8px; flex: none; }
+.hbtn {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
   background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.28);
-  padding: 7px 13px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 7px 12px; border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background .12s, border-color .12s;
 }
-.logout:hover { background: rgba(255,255,255,.2); }
+.hbtn:hover { background: rgba(255,255,255,.2); }
+.hbtn.active { background: rgba(255,255,255,.24); border-color: rgba(255,255,255,.55); }
+.hbtn svg { width: 16px; height: 16px; flex: none; }
+@media (max-width: 600px) { .hbtn .hlbl { display: none; } .hbtn { padding: 7px 9px; } }
 
 /* Faner */
 nav.tabs { background: var(--paper); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 20; }
-nav.tabs .inner { max-width: 1080px; margin: 0 auto; display: flex; gap: 2px; padding: 0 10px; overflow-x: auto; }
+/* Likeverdige faner som fyller hele bredden. ALDRI scrollable: ved for smal
+   skjerm brytes de til ny rad (2 kolonner) i stedet. Grid = garantert lik bredde. */
+nav.tabs .inner { max-width: 1080px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; padding: 0 10px; }
 nav.tabs button {
-  appearance: none; background: none; border: none; cursor: pointer; white-space: nowrap;
-  padding: 13px 14px 11px; font-size: 14px; font-weight: 600; color: var(--muted);
+  appearance: none; background: none; border: none; cursor: pointer;
+  min-width: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 13px 10px 11px; font-size: 14px; font-weight: 600; color: var(--muted);
   border-bottom: 2.5px solid transparent; transition: color .15s;
 }
 nav.tabs button:hover { color: var(--ink); }
 nav.tabs button.active { color: var(--red); border-bottom-color: var(--red); }
+@media (max-width: 560px) { nav.tabs .inner { grid-template-columns: repeat(2, 1fr); } }
 
 /* ─────────────── Layout ─────────────── */
 main { max-width: 1080px; margin: 0 auto; padding: 22px 18px 40px; touch-action: pan-y; will-change: transform; }

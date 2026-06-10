@@ -11,7 +11,9 @@ const PRI_LABEL = { høy: "Høy", middels: "Middels", lav: "Lav" };
 const STATUS_LABEL = { ok: "OK", redusert: "Redusert", ødelagt: "Ødelagt" };
 const STATUS_RANK = { ok: 3, redusert: 2, ødelagt: 1 };
 const QUALITY_RANK = { bra: 4, greit: 3, dårlig: 2, ukjent: 0 };
-const TABS = [["oversikt", "Oversikt"], ["mangler", "Mangler"], ["lister", "Innkjøpslister"], ["merker", "Merker"], ["generer", "Generér oversikt"]];
+// Faner (likeverdige, fyller bredden). «Generér oversikt» er IKKE en fane, men en
+// egen header-knapp ved siden av Logg ut (se render()).
+const TABS = [["oversikt", "Oversikt"], ["mangler", "Mangler"], ["lister", "Innkjøpslister"], ["merker", "Merker"]];
 
 const state = {
   code: localStorage.getItem("slagverk_code") || "",
@@ -357,7 +359,16 @@ function render() {
       ${logo(44, "white")}
       <div class="titles"><h1>Slagverksoversikt</h1><small>Randaberg Musikkorps</small></div>
       <div class="spacer"></div>
-      <button class="logout" data-act="logout">Logg ut</button>
+      <div class="hactions">
+        <button class="hbtn ${state.tab === "generer" ? "active" : ""}" data-tab="generer" title="Generér oversikt" aria-label="Generér oversikt">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+          <span class="hlbl">Rapport</span>
+        </button>
+        <button class="hbtn" data-act="logout" title="Logg ut" aria-label="Logg ut">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
+          <span class="hlbl">Logg ut</span>
+        </button>
+      </div>
     </div></div>
     <nav class="tabs"><div class="inner">
       ${TABS.map(([k, l]) => `<button class="${state.tab === k ? "active" : ""}" data-tab="${k}">${l}</button>`).join("")}
