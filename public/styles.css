@@ -384,7 +384,12 @@ tr.click:hover { background: #fbf6ec; }
   #printarea td { padding: 6px 4px; border-bottom: 1px solid #ddd; font-size: 14px; }
   #printarea .r { text-align: right; white-space: nowrap; }
   #printarea .m { color: #666; font-size: 12px; }
-  #printarea tfoot td { border-bottom: none; border-top: 2px solid #222; font-weight: 700; }
+  #printarea tfoot td { border-bottom: none; font-weight: 700; }
+  #printarea tfoot tr:first-child td { border-top: 2px solid #222; }
+  #printarea .pfoot { margin-top: 18px; color: #888; font-size: 11px; }
+  /* Begrens fargebruk: alt i gråtoner ved utskrift */
+  body.printing #printarea, body.printing #printarea * { color: #111; }
+  body.printing #printarea .m, body.printing #printarea .pmeta, body.printing #printarea .pfoot { color: #666; }
 }
 
 /* ─────────────── Logo (ekte bilde + SVG-fallback) ─────────────── */

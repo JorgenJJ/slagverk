@@ -154,25 +154,54 @@ function downloadCSV(rows, filename) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = filename; a.click();
 }
+// Felles rad-data for eksport (produkt, mangel, antall, pris pr. stk, sum, lenke).
 function listRows(l) {
   return (l.items || []).map((it) => { const o = optionById(it.option_id); if (!o) return null; const w = wish(it.wishlist_id);
-    return { Produkt: optionName(o), "For mangel": w ? w.type : "", Antall: it.qty || 1, Pris: o.price || "", Sum: (o.price || 0) * (it.qty || 1), Lenke: o.link || "" }; }).filter(Boolean);
+    return { produkt: optionName(o), mangel: w ? w.type : "", antall: it.qty || 1, pris: o.price || 0, sum: (o.price || 0) * (it.qty || 1), lenke: o.link || "" }; }).filter(Boolean);
 }
+// ── Excel-rapport: dedikert innkjøps-mal (tittel, pris pr. gjenstand, total) ──
 function exportListExcel(l) {
+  const rows = listRows(l);
+  const total = rows.reduce((a, r) => a + r.sum, 0);
+  const date = new Date().toLocaleDateString("nb-NO");
+  const aoa = [
+    ["Innkjøpsliste – " + l.name],
+    ["Randaberg Musikkorps, slagverk · " + date],
+    [],
+    ["Produkt", "For mangel", "Antall", "Pris pr. stk", "Sum", "Lenke"],
+    ...rows.map((r) => [r.produkt, r.mangel, r.antall, r.pris, r.sum, r.lenke]),
+    [],
+    ["", "", "", "", "Total", total],
+  ];
+  if (l.budget) { aoa.push(["", "", "", "", "Budsjett", l.budget]); aoa.push(["", "", "", "", "Gjenstår", l.budget - total]); }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = [{ wch: 40 }, { wch: 24 }, { wch: 8 }, { wch: 13 }, { wch: 13 }, { wch: 42 }];
+  ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }];
+  // Kroneformat på pris/sum-kolonnene (D, E) – ingen farger.
+  for (let r = 0; r < aoa.length; r++) for (const c of [3, 4]) {
+    const ref = XLSX.utils.encode_cell({ r, c }); if (ws[ref] && typeof ws[ref].v === "number") ws[ref].z = '#,##0" kr"';
+  }
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(listRows(l)), "Innkjøp");
+  XLSX.utils.book_append_sheet(wb, ws, "Innkjøp");
   XLSX.writeFile(wb, `innkjopsliste-${l.name.replace(/\s+/g, "-").toLowerCase()}.xlsx`);
   toast("Eksportert til Excel");
 }
-// Skriv ut / PDF: render lista i et eget print-område og kall window.print().
+// ── Skriv ut / PDF: samme rapport-mal, gråtoner (begrenset fargebruk) ──
 function printList(l) {
-  const rows = listRows(l).map((r) => `<tr><td>${esc(r.Produkt)}</td><td class="m">${esc(r["For mangel"])}</td><td class="r">${fmt(r.Sum)}</td></tr>`).join("");
+  const rows = listRows(l);
+  const total = rows.reduce((a, r) => a + r.sum, 0);
+  const body = rows.map((r) => `<tr><td>${esc(r.produkt)}</td><td class="m">${esc(r.mangel)}</td><td class="r">${r.antall}</td><td class="r">${fmt(r.pris)}</td><td class="r">${fmt(r.sum)}</td></tr>`).join("");
+  const foot = `<tr><td colspan="4" class="r">Total</td><td class="r">${fmt(total)}</td></tr>` +
+    (l.budget ? `<tr><td colspan="4" class="r">Budsjett</td><td class="r">${fmt(l.budget)}</td></tr><tr><td colspan="4" class="r">Gjenstår</td><td class="r">${fmt(l.budget - total)}</td></tr>` : "");
   let area = document.getElementById("printarea");
   if (!area) { area = document.createElement("div"); area.id = "printarea"; document.body.appendChild(area); }
-  area.innerHTML = `<h2>Innkjøpsliste: ${esc(l.name)}</h2>
-    <div class="pmeta">Randaberg Musikkorps · ${new Date().toLocaleDateString("nb-NO")}${l.budget ? " · Budsjett " + fmt(l.budget) : ""}</div>
-    <table><thead><tr><th>Produkt</th><th>For mangel</th><th class="r">Pris</th></tr></thead>
-    <tbody>${rows}</tbody><tfoot><tr><td></td><td class="r">Sum</td><td class="r">${fmt(listSum(l))}</td></tr></tfoot></table>`;
+  area.innerHTML = `<h2>Innkjøpsliste – ${esc(l.name)}</h2>
+    <div class="pmeta">Randaberg Musikkorps, slagverk · ${new Date().toLocaleDateString("nb-NO")}</div>
+    <table><thead><tr><th>Produkt</th><th>For mangel</th><th class="r">Antall</th><th class="r">Pris pr. stk</th><th class="r">Sum</th></tr></thead>
+      <tbody>${body || `<tr><td colspan="5">Ingen produkter i lista.</td></tr>`}</tbody>
+      <tfoot>${foot}</tfoot></table>
+    <div class="pfoot">Generert ${new Date().toLocaleDateString("nb-NO")} · Slagverksoversikt</div>`;
   document.body.classList.add("printing");
   const done = () => { document.body.classList.remove("printing"); window.removeEventListener("afterprint", done); };
   window.addEventListener("afterprint", done);
