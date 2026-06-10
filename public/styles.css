@@ -220,7 +220,7 @@ tr.click:hover { background: #fbf6ec; }
 .card .note { margin-top: 8px; font-size: 12.5px; color: var(--ink); background: var(--paper-2); padding: 7px 10px; border-radius: 8px; }
 .card .chiprow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 
-@media (max-width: 720px) {
+@media screen and (max-width: 720px) {
   table { display: none; }
   .cards { display: flex; }
   .stat b { font-size: 22px; }
@@ -377,6 +377,7 @@ tr.click:hover { background: #fbf6ec; }
 @media print {
   body.printing #root, body.printing .dock, body.printing .dock-scrim { display: none !important; }
   body.printing #printarea { display: block; padding: 8px 12px; color: #111; }
+  #printarea table { display: table !important; }   /* overstyr ev. skjult-tabell-regler */
   #printarea h2 { font-family: var(--font-display); font-size: 22px; margin: 0 0 2px; }
   #printarea .pmeta { color: #666; font-size: 12px; margin-bottom: 16px; }
   #printarea table { width: 100%; border-collapse: collapse; }
