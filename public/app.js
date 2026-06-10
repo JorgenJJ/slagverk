@@ -13,7 +13,7 @@ const STATUS_RANK = { ok: 3, redusert: 2, ødelagt: 1 };
 const QUALITY_RANK = { bra: 4, greit: 3, dårlig: 2, ukjent: 0 };
 // Faner (likeverdige, fyller bredden). «Generér oversikt» er IKKE en fane, men en
 // egen header-knapp ved siden av Logg ut (se render()).
-const TABS = [["oversikt", "Oversikt"], ["mangler", "Mangler"], ["lister", "Innkjøpslister"], ["merker", "Merker"]];
+const TABS = [["oversikt", "Oversikt"], ["mangler", "Mangler"], ["lister", "Innkjøp"], ["merker", "Merker"]];
 
 const state = {
   code: localStorage.getItem("slagverk_code") || "",

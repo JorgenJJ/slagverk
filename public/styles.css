@@ -132,18 +132,19 @@ header { position: sticky; top: 0; z-index: 30; }
 
 /* Faner */
 nav.tabs { background: var(--paper); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 20; }
-/* Likeverdige faner som fyller hele bredden. ALDRI scrollable: ved for smal
-   skjerm brytes de til ny rad (2 kolonner) i stedet. Grid = garantert lik bredde. */
-nav.tabs .inner { max-width: 1080px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; padding: 0 10px; }
+/* Likeverdige faner som fyller hele bredden. ALDRI scrollable. flex:1 1 0 gir lik
+   bredde; min-width setter når en knapp BRYTES til ny rad (kun ved ekte plassmangel),
+   så på vanlige telefoner får alle fire plass på én rad. */
+nav.tabs .inner { max-width: 1080px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 2px; padding: 0 10px; }
 nav.tabs button {
+  flex: 1 1 0; min-width: 78px;
   appearance: none; background: none; border: none; cursor: pointer;
-  min-width: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  padding: 13px 10px 11px; font-size: 14px; font-weight: 600; color: var(--muted);
+  text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 13px 8px 11px; font-size: 14px; font-weight: 600; color: var(--muted);
   border-bottom: 2.5px solid transparent; transition: color .15s;
 }
 nav.tabs button:hover { color: var(--ink); }
 nav.tabs button.active { color: var(--red); border-bottom-color: var(--red); }
-@media (max-width: 560px) { nav.tabs .inner { grid-template-columns: repeat(2, 1fr); } }
 
 /* ─────────────── Layout ─────────────── */
 main { max-width: 1080px; margin: 0 auto; padding: 22px 18px 40px; touch-action: pan-y; will-change: transform; }
