@@ -203,10 +203,10 @@ function printList(l) {
       <tfoot>${foot}</tfoot></table>
     <div class="pfoot">Generert ${new Date().toLocaleDateString("nb-NO")} · Slagverksoversikt</div>`;
   document.body.classList.add("printing");
-  const done = () => { document.body.classList.remove("printing"); window.removeEventListener("afterprint", done); };
-  window.addEventListener("afterprint", done);
+  // IKKE fjern klassen via afterprint/timer: på mobil blokkerer ikke window.print()
+  // og afterprint kan fyre før utskriften faktisk rasteriseres → siden printes i
+  // stedet for rapporten. Klassen ryddes i stedet øverst i render() (usynlig på skjerm).
   window.print();
-  setTimeout(done, 1000);
 }
 
 // ── Mutations ──
@@ -343,6 +343,10 @@ let prevTab = null;
 let swipeIn = 0;   // 1 = ny fane skled inn fra høyre (neste), -1 = fra venstre (forrige)
 function render() {
   if (!state.code) { prevTab = null; return renderLogin(); }
+  // Rydd utskrifts-modus her (ikke via afterprint/timer – upålitelig på mobil der
+  // window.print() ikke blokkerer). Klassen er usynlig på skjerm, så trygt å la
+  // den stå til neste render.
+  document.body.classList.remove("printing");
   // Behold scroll-posisjon, og animér <main> KUN ved faktisk fanebytte – ellers
   // føles hvert klikk som en full sideoppdatering.
   const scrollY = window.scrollY;
@@ -1143,6 +1147,9 @@ function initSwipeNav() {
 }
 
 // ── Boot ──
+// Lås til stående der nettleseren tillater det (installert PWA / fullscreen).
+// Kaster/avvises ellers – svelg stille; CSS-rotasjonsvakten er fallback.
+try { screen.orientation && screen.orientation.lock && screen.orientation.lock("portrait").catch(() => {}); } catch { /* ikke støttet */ }
 initGlobalListeners();
 initSwipeNav();
 (async function boot() {
