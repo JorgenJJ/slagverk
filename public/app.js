@@ -20,7 +20,7 @@ const state = {
   filters: { category: [], status: [], quality: [], brand: [] },
   openFilter: null, filterSheet: false,
   expandedGroups: {}, expandedWish: {}, expandedNodes: {},
-  retiredView: false, listArchive: false,
+  retiredView: false, listArchive: false, exportMenu: null,
   ovMinStatus: "Alle", ovMinQuality: "Alle",
   chat: [], chatBusy: false, chatOpen: false, lastActions: [],
   modal: null,
@@ -154,14 +154,30 @@ function downloadCSV(rows, filename) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = filename; a.click();
 }
-function exportListCSV(l) {
-  const rows = [["Produkt", "For mangel", "Kategori", "Prioritet", "Antall", "Pris", "Sum", "Lenke"]];
-  (l.items || []).forEach((it) => { const o = optionById(it.option_id); if (!o) return; const w = wish(it.wishlist_id);
-    const p = o.price || 0;
-    rows.push([optionName(o), w ? w.type : "", w ? w.category : "", w ? PRI_LABEL[w.priority] : "", it.qty || 1, p || "", p * (it.qty || 1), o.link || ""]); });
-  rows.push([]); rows.push(["", "", "", "", "", "Sum:", listSum(l), ""]);
-  downloadCSV(rows, `innkjopsliste-${l.name.replace(/\s+/g, "-").toLowerCase()}.csv`);
-  toast("Liste eksportert");
+function listRows(l) {
+  return (l.items || []).map((it) => { const o = optionById(it.option_id); if (!o) return null; const w = wish(it.wishlist_id);
+    return { Produkt: optionName(o), "For mangel": w ? w.type : "", Antall: it.qty || 1, Pris: o.price || "", Sum: (o.price || 0) * (it.qty || 1), Lenke: o.link || "" }; }).filter(Boolean);
+}
+function exportListExcel(l) {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(listRows(l)), "Innkjøp");
+  XLSX.writeFile(wb, `innkjopsliste-${l.name.replace(/\s+/g, "-").toLowerCase()}.xlsx`);
+  toast("Eksportert til Excel");
+}
+// Skriv ut / PDF: render lista i et eget print-område og kall window.print().
+function printList(l) {
+  const rows = listRows(l).map((r) => `<tr><td>${esc(r.Produkt)}</td><td class="m">${esc(r["For mangel"])}</td><td class="r">${fmt(r.Sum)}</td></tr>`).join("");
+  let area = document.getElementById("printarea");
+  if (!area) { area = document.createElement("div"); area.id = "printarea"; document.body.appendChild(area); }
+  area.innerHTML = `<h2>Innkjøpsliste: ${esc(l.name)}</h2>
+    <div class="pmeta">Randaberg Musikkorps · ${new Date().toLocaleDateString("nb-NO")}${l.budget ? " · Budsjett " + fmt(l.budget) : ""}</div>
+    <table><thead><tr><th>Produkt</th><th>For mangel</th><th class="r">Pris</th></tr></thead>
+    <tbody>${rows}</tbody><tfoot><tr><td></td><td class="r">Sum</td><td class="r">${fmt(listSum(l))}</td></tr></tfoot></table>`;
+  document.body.classList.add("printing");
+  const done = () => { document.body.classList.remove("printing"); window.removeEventListener("afterprint", done); };
+  window.addEventListener("afterprint", done);
+  window.print();
+  setTimeout(done, 1000);
 }
 
 // ── Mutations ──
@@ -608,6 +624,7 @@ function viewLister() {
     <div class="toolbar"><span class="eyebrow">Innkjøpslister</span><span class="spacer"></span>
       ${archived.length ? `<button class="btn ghost sm" data-act="toggle-archive">📁 Kjøpt/arkiv (${archived.length})</button>` : ""}
       <button class="btn" data-act="add-list">+ Ny liste</button></div>
+    ${state.exportMenu ? `<div class="pop-catcher" data-act="close-export"></div>` : ""}
     ${active.length ? `<div class="lists-grid">${active.map(listCard).join("")}</div>`
       : `<p style="color:var(--muted)">Ingen aktive lister. Lag én, og legg inn mangler du vil kjøpe sammen.</p>`}
     <div class="grand"><div><div class="label">Sum alle mangler (overordnet)</div></div><div class="val">${fmt(manglerTotal())}</div></div>`;
@@ -640,10 +657,9 @@ function listCard(l) {
     </div>
     <div class="body">
       ${items.length ? items.map(({ it, o, w }) => `<div class="li">
-          ${w ? `<span class="tag ${w.priority}" style="font-size:10px">${PRI_LABEL[w.priority]}</span>` : ""}
-          <div style="flex:1;min-width:0" class="click" data-li-edit="${w ? w.id : ""}">
-            <div class="li-prod">${esc(optionName(o))}${o.link ? ` <a href="${esc(o.link)}" target="_blank" rel="noreferrer" data-stoplink>🔗</a>` : ""}</div>
-            <div class="li-ref">↳ ${w ? esc(w.type) : "mangel fjernet"}</div>
+          <div style="flex:1;min-width:0">
+            <div class="li-prod">${o.link ? `<a href="${esc(o.link)}" target="_blank" rel="noreferrer">${esc(optionName(o))}</a>` : esc(optionName(o))}</div>
+            <div class="li-ref ${w ? "click" : ""}" ${w ? `data-li-edit="${w.id}"` : ""}>↳ ${w ? esc(w.type) : "mangel fjernet"}</div>
           </div>
           <span class="price">${fmt((o.price || 0) * (it.qty || 1))}</span>
           <span class="x" data-rmitem="${l.id}|${o.id}" title="Fjern">✕</span>
@@ -651,7 +667,13 @@ function listCard(l) {
     </div>
     <div class="foot">
       <button class="btn ghost sm" data-add-items="${l.id}">+ Legg til varer</button>
-      <button class="btn ghost sm" data-export-list="${l.id}">⬇ Eksporter</button>
+      <div class="export-wrap">
+        <button class="btn ghost sm" data-export-toggle="${l.id}">⬇ Eksporter ▾</button>
+        ${state.exportMenu === l.id ? `<div class="export-menu">
+          <button data-export-xlsx="${l.id}">▦ Excel (.xlsx)</button>
+          <button data-export-print="${l.id}">⎙ Skriv ut / PDF</button>
+        </div>` : ""}
+      </div>
       ${items.length ? `<button class="btn brass sm" data-buy-list="${l.id}">✓ Marker kjøpt</button>` : ""}
       <span style="flex:1"></span>
       <button class="btn danger sm" data-del-list="${l.id}">Slett</button>
@@ -914,7 +936,9 @@ function wire() {
   // Lister
   q("[data-edit-list]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); openModal({ kind: "list-form", item: { ...byId(state.lists, el.dataset.editList) } }); });
   q("[data-add-items]").forEach((el) => el.onclick = () => openModal({ kind: "list-items", listId: el.dataset.addItems }));
-  q("[data-export-list]").forEach((el) => el.onclick = () => exportListCSV(byId(state.lists, el.dataset.exportList)));
+  q("[data-export-toggle]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const id = el.dataset.exportToggle; state.exportMenu = state.exportMenu === id ? null : id; render(); });
+  q("[data-export-xlsx]").forEach((el) => el.onclick = () => { state.exportMenu = null; exportListExcel(byId(state.lists, el.dataset.exportXlsx)); render(); });
+  q("[data-export-print]").forEach((el) => el.onclick = () => { const l = byId(state.lists, el.dataset.exportPrint); state.exportMenu = null; render(); setTimeout(() => printList(l), 30); });
   q("[data-del-list]").forEach((el) => el.onclick = () => { if (confirm("Slette listen?")) deleteList(el.dataset.delList); });
   q("[data-rmitem]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [lid, oid] = splitFirst(el.dataset.rmitem); toggleListItem(lid, oid, false); });
   // Oppfyllelse / arkiv
@@ -947,6 +971,7 @@ function wire() {
       "clear-filters": () => { state.filters = { category: [], status: [], quality: [], brand: [] }; render(); },
       "toggle-retired": () => { state.retiredView = !state.retiredView; render(); },
       "toggle-archive": () => { state.listArchive = !state.listArchive; render(); },
+      "close-export": () => { state.exportMenu = null; render(); },
       "close-filter": () => { state.openFilter = null; render(); },
       "copy-report": () => { navigator.clipboard.writeText(reportText()); toast("Kopiert"); },
       "print-report": () => window.print(),
