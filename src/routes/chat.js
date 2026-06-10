@@ -26,6 +26,16 @@ const BRANDCAT = ["Generelt", ...CAT];
 const STAT = ["ok", "redusert", "ødelagt"];
 const QUAL = ["bra", "greit", "dårlig", "ukjent"];
 const PRIO = ["høy", "middels", "lav"];
+
+// Slagverksordliste: kanonisk norsk = engelsk / synonymer. Lar modellen forstå
+// brukeren uansett term (engelsk, slang, dialekt) og bruke riktig norsk navn.
+// Format per linje: «Norsk (engelsk; synonym, synonym)».
+const ORDLISTE = `Trommer: Skarptromme (snare drum; rulletromme, militærtromme) · Marsjtromme/Felttromme (marching snare; pikoloskarptromme) · Tenortromme (tenor drum) · Konsertstortromme (concert bass drum; grand cassa, cassa, stortromme) · Bassdrum/Fotstortromme (bass drum, kick drum) · Tomtom (tom-tom; tom, rack tom, gulvtom, floor tom) · Trommesett (drum kit/set; batteri) · Pauker (timpani; kettledrums, pauken, timbales) · Rototom · Bongos (bongo drums) · Congas (conga drums; tumbadora) · Djembe · Cajon (cajón)
+Trommeskinn: Trommeskinn (drumhead/skin; membran, skinn, head) · Slagskinn (batter head) · Resonansskinn (resonant head; reso) · Snareside (snare-side head; svilleskinn) · Enkeltlagsskinn (single-ply; 1-ply) · Dobbeltlagsskinn (two-ply; 2-ply) · Klart skinn (clear) · Betrukket skinn (coated) · Paukeskinn (timpani head) · Demperand (damping/muffling ring; muffler)
+Melodisk: Klokkespill (glockenspiel/bells; campanelli, carillon) · Lyrespill (lyre/bell lyre; marsjklokkespill) · Xylofon (xylophone) · Marimba · Vibrafon (vibraphone; vibes, vibraharp) · Rørklokker (tubular bells/chimes) · Crotaler (crotales; antikke cymbaler) · Celesta
+Cymbaler: A2-cymbal (clash cymbals) · Orkestercymbal (suspended cymbal; susp cym) · Crashcymbal (crash) · Ridecymbal (ride) · Hi-hat (hihat, charleston) · Tamtam (tam-tam) · Gong · Splash-cymbal · China-cymbal
+Perkusjon: Triangel (triangle) · Tamburin (tambourine) · Kastanjettar (castanets; kastagnetter) · Maracas · Treblokk (wood block) · Claves (rytmepinner, klave) · Guiro (güiro) · Kubjelle (cowbell) · Bjeller (sleigh bells; jingles) · Rangle (ratchet; skralle, skrangle) · Pisk (whip/slapstick) · Vibrasap (vibraslap) · Templeblokker (temple blocks) · Vindspill (wind chimes/mark tree; barchimes) · Vindmaskin (wind machine) · Cabasa (afuche) · Shaker
+Stikker og klubber: Trommestikke (drumstick; stikke) · Visp (brush; trommebørste) · Rods (multi-rods) · Mallet/Kølle (mallet) · Garnkølle (yarn/soft mallet) · Gummikølle (rubber mallet) · Plastikkølle (plastic/hard mallet) · Paukekølle (timpani mallet) · Stortrommekølle (bass drum mallet) · Triangelstikke (triangle beater) · Bue (bow)`;
 const str = (d = "") => ({ type: "string", description: d });
 const enm = (vals, d = "") => ({ type: "string", enum: vals, description: d });
 const num = (d = "kroner") => ({ type: "number", description: d });
@@ -393,6 +403,10 @@ PLASSERING I KATEGORI (hint)
 - Stativer: stikkebord, notestativ
 - Perkusjon: tamburin, belltree, woodblock, triangel, shaker, cajon
 - Stikker og klubber: trommestikker, pauke-klubber, marimbakøller, visper, mallets
+
+ORDLISTE (forstå brukeren uansett term – engelsk, slang, dialekt – men bruk det
+kanoniske NORSKE navnet når du lagrer/svarer). Format: «Norsk (engelsk; synonymer)».
+${ORDLISTE}
 
 TVETYDIGHET
 Handle direkte når det er klart. Hvis flere ting matcher (f.eks. to like
