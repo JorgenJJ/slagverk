@@ -1,6 +1,10 @@
 // ── Slagverksoversikt – frontend (buildless vanilla JS) ──
-// Randaberg Musikkorps. Tema: regimental heritage (se styles.css).
+// Randaberg Musikkorps. Tema: «lagerhylle» (se styles.css).
 // Konvensjoner for hele appen: se /CLAUDE.md i repoet.
+//
+// Struktur pr. fane: papir-header → oppsummeringsstripe → søk/filter →
+// seksjoner med klebrig overskrift og rader. AI-bar og fanelinje ligger fast
+// i bunnen. Skjemaer er ark som kommer opp fra bunnen (ikke bokser midt på).
 
 const CATEGORIES = ["Trommer", "Melodisk", "Pauker", "Cymbaler", "Stativer", "Perkusjon", "Stikker og klubber"];
 const BRAND_CATS = ["Generelt", ...CATEGORIES];
@@ -9,18 +13,28 @@ const STATUSES = ["ok", "redusert", "ødelagt"];
 const QUALITIES = ["bra", "greit", "dårlig", "ukjent"];
 const PRI_LABEL = { høy: "Høy", middels: "Middels", lav: "Lav" };
 const STATUS_LABEL = { ok: "OK", redusert: "Redusert", ødelagt: "Ødelagt" };
+const QUALITY_LABEL = { bra: "Bra", greit: "Greit", dårlig: "Dårlig", ukjent: "Ukjent" };
 const STATUS_RANK = { ok: 3, redusert: 2, ødelagt: 1 };
 const QUALITY_RANK = { bra: 4, greit: 3, dårlig: 2, ukjent: 0 };
-// Faner (likeverdige, fyller bredden). «Generér oversikt» er IKKE en fane, men en
-// egen header-knapp ved siden av Logg ut (se render()).
+// Faner (likeverdige, fyller bredden i bunnlinja). «Generér oversikt» er IKKE en
+// fane, men en header-knapp ved siden av Logg ut (se render()).
 const TABS = [["oversikt", "Oversikt"], ["mangler", "Mangler"], ["lister", "Innkjøp"], ["merker", "Merker"]];
+// Tittel/undertittel i headeren pr. fane.
+const TAB_HEAD = {
+  oversikt: ["Slagverk", "Randaberg Musikkorps"],
+  mangler: ["Mangler", "Ønskede oppgraderinger"],
+  lister: ["Innkjøp", "Innkjøpslister"],
+  merker: ["Merker", "Foretrukne leverandører"],
+  generer: ["Generér oversikt", "PDF til andre korps"],
+};
 
 const state = {
   code: localStorage.getItem("slagverk_code") || "",
   tab: "oversikt",
   inventory: [], wishlist: [], lists: [], brands: [],
   filters: { category: [], status: [], quality: [], brand: [] },
-  openFilter: null, filterSheet: false,
+  q: "", searchFocus: false,
+  filterSheet: false,
   expandedGroups: {}, expandedWish: {}, expandedNodes: {},
   retiredView: false, listArchive: false, exportMenu: null,
   ovMinStatus: "Alle", ovMinQuality: "Alle",
@@ -30,32 +44,34 @@ const state = {
 
 const root = document.getElementById("root");
 const fmt = (n) => (n || n === 0 ? Number(n).toLocaleString("nb-NO") + " kr" : "–");
+const num = (n) => (n || n === 0 ? Number(n).toLocaleString("nb-NO") : "");
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const byId = (arr, id) => arr.find((x) => x.id === id);
 // Fjern vanlig markdown som ikke rendres i appen (sikkerhetsnett – modellen er
-// også bedt om å skrive ren tekst). Stripper **fet**, __fet__, `kode`, #overskrift.
+// også bedt om å skrive ren tekst).
 const stripMd = (s) => String(s ?? "")
   .replace(/\*\*(.+?)\*\*/g, "$1")
   .replace(/__(.+?)__/g, "$1")
   .replace(/`([^`]+)`/g, "$1")
   .replace(/^\s{0,3}#{1,6}\s+/gm, "");
 
-// Ekte Randaberg-logo (public/randaberg-logo.png) med innebygd SVG-skjold som
-// fallback dersom bildet ikke kan lastes.
+// Ekte Randaberg-logo med innebygd SVG-skjold som fallback.
 function fallbackSVG(stroke) {
   return `<svg viewBox='0 0 48 48' width='100%' height='100%' fill='none'><path d='M24 3 6 8v17c0 11 8 18 18 22 10-4 18-11 18-22V8L24 3Z' fill='none' stroke='${stroke}' stroke-width='2.4' stroke-linejoin='round'/><circle cx='24' cy='22' r='8.2' fill='none' stroke='${stroke}' stroke-width='2.1'/><path d='M16.6 18.4 31.4 25.6M16.6 25.6 31.4 18.4' stroke='${stroke}' stroke-width='2.1' stroke-linecap='round'/></svg>`;
 }
-// variant: "full" (farge), "white" (hvite linjer/transparent – for rød bakgrunn),
-// "red" (røde linjer/transparent – for lys bakgrunn).
-function logo(size, variant = "full") {
+// variant: "full" (farge), "white" (hvite linjer – rød bakgrunn), "red" (røde linjer – lys bakgrunn).
+function logo(size, variant = "red") {
   const src = variant === "white" ? "/randaberg-logo-white.png"
     : variant === "red" ? "/randaberg-logo-red.png" : "/randaberg-logo.png";
-  const stroke = variant === "white" ? "#fff" : "#b11116";
+  const stroke = variant === "white" ? "#fff" : "#ba2e26";
   return `<span class="logo" style="width:${size}px;height:${size}px">
     <img src="${src}" alt="Randaberg Musikkorps" onerror="this.style.display='none';this.nextElementSibling.style.display='block'" />
     <span class="logo-fb" style="display:none">${fallbackSVG(stroke)}</span>
   </span>`;
 }
+
+const ICON_DOC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>`;
+const ICON_OUT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9"/></svg>`;
 
 // ── API ──
 async function api(path, opts = {}) {
@@ -105,15 +121,19 @@ const wish = (id) => byId(state.wishlist, id);
 const inv = (id) => byId(state.inventory, id);
 const optionPrices = (w) => (w.options || []).map((o) => o.price).filter((p) => p != null);
 const effPrice = (w) => { const p = optionPrices(w); return p.length ? Math.min(...p) : (w.estimated_price || 0); };
-function priceDisplay(w) {
+// To linjer når det er et spenn (som i designet), én linje ellers.
+function priceLines(w) {
   const p = optionPrices(w);
-  if (p.length) { const mn = Math.min(...p), mx = Math.max(...p); return mn === mx ? fmt(mn) : `${fmt(mn)} – ${fmt(mx)}`; }
-  return fmt(w.estimated_price);
+  if (p.length) {
+    const mn = Math.min(...p), mx = Math.max(...p);
+    return mn === mx ? [fmt(mn)] : [num(mn) + " –", fmt(mx)];
+  }
+  return [fmt(w.estimated_price)];
 }
+const priceDisplay = (w) => priceLines(w).join(" ");
 // Et produkt (alternativ) på tvers av alle mangler. Liste-linjer refererer til disse.
 const optionById = (oid) => { for (const w of state.wishlist) { const o = (w.options || []).find((x) => x.id === oid); if (o) return o; } return null; };
 const optionName = (o) => (o ? ([o.brand, o.model, o.size].filter(Boolean).join(" ") || "Alternativ") : "");
-// En liste-linje ER et produkt (option_id). Sum = produktets pris.
 const listSum = (l) => (l.items || []).reduce((a, it) => { const o = optionById(it.option_id); return a + (o && o.price != null ? o.price * (it.qty || 1) : 0); }, 0);
 const manglerTotal = () => state.wishlist.reduce((a, w) => a + effPrice(w), 0);
 const replacementFor = (invId) => state.wishlist.filter((w) => w.replaces_inventory_id === invId);
@@ -123,7 +143,6 @@ const isErstatning = (w) => !!w.replaces_inventory_id;
 const invChildren = (id) => state.inventory.filter((i) => i.parent_id === id && !i.retired_at).sort((a, b) => (a.category + a.type).localeCompare(b.category + b.type));
 const invRoots = () => state.inventory.filter((i) => (!i.parent_id || !inv(i.parent_id)) && !i.retired_at)
   .sort((a, b) => (a.category + a.type).localeCompare(b.category + b.type));
-const invHasKids = (i) => state.inventory.some((x) => x.parent_id === i.id);
 function invSubtreeCount(id) { let n = 0; for (const c of invChildren(id)) n += 1 + invSubtreeCount(c.id); return n; }
 function invDescendants(id) { const out = []; for (const c of invChildren(id)) { out.push(c.id); out.push(...invDescendants(c.id)); } return out; }
 function invPath(i) { const out = []; let p = i.parent_id ? inv(i.parent_id) : null; let guard = 0; while (p && guard++ < 20) { out.unshift(p.type); p = p.parent_id ? inv(p.parent_id) : null; } return out; }
@@ -156,7 +175,6 @@ function downloadCSV(rows, filename) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = filename; a.click();
 }
-// Felles rad-data for eksport (produkt, mangel, antall, pris pr. stk, sum, lenke).
 function listRows(l) {
   return (l.items || []).map((it) => { const o = optionById(it.option_id); if (!o) return null; const w = wish(it.wishlist_id);
     return { produkt: optionName(o), mangel: w ? w.type : "", antall: it.qty || 1, pris: o.price || 0, sum: (o.price || 0) * (it.qty || 1), lenke: o.link || "" }; }).filter(Boolean);
@@ -180,7 +198,6 @@ function exportListExcel(l) {
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws["!cols"] = [{ wch: 40 }, { wch: 24 }, { wch: 8 }, { wch: 13 }, { wch: 13 }, { wch: 42 }];
   ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }];
-  // Kroneformat på pris/sum-kolonnene (D, E) – ingen farger.
   for (let r = 0; r < aoa.length; r++) for (const c of [3, 4]) {
     const ref = XLSX.utils.encode_cell({ r, c }); if (ws[ref] && typeof ws[ref].v === "number") ws[ref].z = '#,##0" kr"';
   }
@@ -189,7 +206,7 @@ function exportListExcel(l) {
   XLSX.writeFile(wb, `innkjopsliste-${l.name.replace(/\s+/g, "-").toLowerCase()}.xlsx`);
   toast("Eksportert til Excel");
 }
-// ── Skriv ut / PDF: samme rapport-mal, gråtoner (begrenset fargebruk) ──
+// ── Skriv ut / PDF: samme rapport-mal, gråtoner ──
 function printList(l) {
   const rows = listRows(l);
   const total = rows.reduce((a, r) => a + r.sum, 0);
@@ -205,9 +222,7 @@ function printList(l) {
       <tfoot>${foot}</tfoot></table>
     <div class="pfoot">Generert ${new Date().toLocaleDateString("nb-NO")} · Slagverksoversikt</div>`;
   document.body.classList.add("printing");
-  // IKKE fjern klassen via afterprint/timer: på mobil blokkerer ikke window.print()
-  // og afterprint kan fyre før utskriften faktisk rasteriseres → siden printes i
-  // stedet for rapporten. Klassen ryddes i stedet øverst i render() (usynlig på skjerm).
+  // Klassen ryddes i render() – afterprint/timer er upålitelig på mobil.
   window.print();
 }
 
@@ -254,7 +269,6 @@ async function deleteWish(id) { await api("/wishlist/" + id, { method: "DELETE" 
 async function createList(item) { await api("/lists", { method: "POST", body: JSON.stringify(item) }); state.modal = null; await loadAll(); toast("Liste opprettet"); }
 async function saveList(item) { await api("/lists/" + item.id, { method: "PUT", body: JSON.stringify(item) }); state.modal = null; await loadAll(); toast("Lagret"); }
 async function deleteList(id) { await api("/lists/" + id, { method: "DELETE" }); state.modal = null; await loadAll(); toast("Liste slettet"); }
-// Legg/fjern et PRODUKT (option) i en liste.
 async function toggleListItem(listId, optionId, on) {
   if (on) await api(`/lists/${listId}/items`, { method: "POST", body: JSON.stringify({ option_id: optionId }) });
   else await api(`/lists/${listId}/items/${optionId}`, { method: "DELETE" });
@@ -331,7 +345,6 @@ async function undoActions() {
       if (a.op === "create") await api(`${coll}/${a.id}`, { method: "DELETE" });
       else if (a.op === "update") await api(`${coll}/${a.id}`, { method: "PUT", body: JSON.stringify(a.before) });
       else if (a.op === "delete") {
-        // Gjenopprett slettet rad fra `before` (createX beholder id-en).
         if (a.kind === "option") await api(`/wishlist/${a.before.wishlist_id}/options`, { method: "POST", body: JSON.stringify(a.before) });
         else await api(coll, { method: "POST", body: JSON.stringify(a.before) });
       }
@@ -342,37 +355,23 @@ async function undoActions() {
 
 // ── Render ──
 let prevTab = null;
-let swipeIn = 0;   // 1 = ny fane skled inn fra høyre (neste), -1 = fra venstre (forrige)
+let swipeIn = 0;   // 1 = ny fane skled inn fra høyre (neste), -1 = fra venstre
 function render() {
   if (!state.code) { prevTab = null; return renderLogin(); }
-  // Rydd utskrifts-modus her (ikke via afterprint/timer – upålitelig på mobil der
-  // window.print() ikke blokkerer). Klassen er usynlig på skjerm, så trygt å la
-  // den stå til neste render.
   document.body.classList.remove("printing");
-  // Behold scroll-posisjon, og animér <main> KUN ved faktisk fanebytte – ellers
-  // føles hvert klikk som en full sideoppdatering.
   const scrollY = window.scrollY;
   const tabChanged = prevTab !== state.tab;
   prevTab = state.tab;
+  const [title, sub] = TAB_HEAD[state.tab] || TAB_HEAD.oversikt;
   root.innerHTML = `
-    <header><div class="bar"><div class="brand">
-      ${logo(44, "white")}
-      <div class="titles"><h1>Slagverksoversikt</h1><small>Randaberg Musikkorps</small></div>
-      <div class="spacer"></div>
+    <header><div class="appbar">
+      ${logo(32, "red")}
+      <div class="titles"><h1>${esc(title)}</h1><small>${esc(sub)}</small></div>
       <div class="hactions">
-        <button class="hbtn ${state.tab === "generer" ? "active" : ""}" data-tab="generer" title="Generér oversikt" aria-label="Generér oversikt">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
-          <span class="hlbl">Rapport</span>
-        </button>
-        <button class="hbtn" data-act="logout" title="Logg ut" aria-label="Logg ut">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
-          <span class="hlbl">Logg ut</span>
-        </button>
+        <button class="hbtn ${state.tab === "generer" ? "active" : ""}" data-tab="generer" title="Generér oversikt (PDF til andre korps)" aria-label="Generér oversikt">${ICON_DOC}</button>
+        <button class="hbtn" data-act="logout" title="Logg ut" aria-label="Logg ut">${ICON_OUT}</button>
       </div>
-    </div></div>
-    <nav class="tabs"><div class="inner">
-      ${TABS.map(([k, l]) => `<button class="${state.tab === k ? "active" : ""}" data-tab="${k}">${l}</button>`).join("")}
-    </div></nav></header>
+    </div></header>
     <main>${
       state.tab === "oversikt" ? viewOversikt()
       : state.tab === "mangler" ? viewMangler()
@@ -380,13 +379,12 @@ function render() {
       : state.tab === "merker" ? viewMerker()
       : viewGenerer()
     }</main>
-    ${renderDock()}
+    ${renderBottom()}
     ${state.modal ? renderModal() : ""}
     ${state.filterSheet ? renderFilterSheet() : ""}
   `;
   const mainEl = root.querySelector("main");
   if (swipeIn && mainEl) {
-    // Sklid den nye fanen inn fra siden (sømløst etter sveip).
     const from = swipeIn === 1 ? window.innerWidth : -window.innerWidth;
     mainEl.style.transition = "none";
     mainEl.style.transform = `translateX(${from}px)`;
@@ -411,7 +409,7 @@ function renderLogin() {
       <h1>Slagverksoversikt</h1>
       <p>Randaberg Musikkorps</p>
       <div class="field"><label>Tilgangskode</label><input id="code" type="password" placeholder="••••••" autofocus /></div>
-      <button class="btn" id="loginBtn" style="width:100%;justify-content:center">Logg inn</button>
+      <button class="btn" id="loginBtn" style="width:100%">Logg inn</button>
       <p id="loginErr" style="color:var(--bad);margin-top:14px;display:none;text-transform:none;letter-spacing:0">Feil kode</p>
     </div></div>`;
   const go = async () => { try { await login(document.getElementById("code").value); } catch { document.getElementById("loginErr").style.display = "block"; } };
@@ -419,14 +417,39 @@ function renderLogin() {
   document.getElementById("code").onkeydown = (e) => { if (e.key === "Enter") go(); };
 }
 
-// ── Filtre ──
+// ── Felles byggeklosser ─────────────────────────────────────────────
+const pillStatus = (s) => `<span class="pill ${s}">${STATUS_LABEL[s] || esc(s)}</span>`;
+// Kvalitet: nøytral tre-trinns måler med ordet under (aldri forvekslet med tilstand).
+function qmeter(q) {
+  const n = { bra: 3, greit: 2, dårlig: 1, ukjent: 1 }[q] ?? 0;
+  const unk = q === "ukjent";
+  let bars = "";
+  for (let k = 0; k < 3; k++) bars += `<i class="${k < n ? (unk ? "unk" : "on") : ""}"></i>`;
+  return `<div class="qm">${bars}</div><span class="qlabel">${QUALITY_LABEL[q] || esc(q)}</span>`;
+}
+function searchBar(placeholder, extra) {
+  return `<div class="seek"><div class="line">
+    <div class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="${esc(placeholder)}" value="${esc(state.q)}" /></div>
+    ${extra || ""}
+  </div>${activeFilterChips()}</div>`;
+}
+function activeFilterChips() {
+  const chips = [];
+  const push = (key, val, label) => chips.push(`<span class="fchip" data-rmfilter="${key}|${esc(val)}">${esc(label)} ✕</span>`);
+  state.filters.category.forEach((c) => push("category", c, c));
+  state.filters.status.forEach((s) => push("status", s, STATUS_LABEL[s]));
+  state.filters.quality.forEach((q) => push("quality", q, QUALITY_LABEL[q]));
+  state.filters.brand.forEach((b) => push("brand", b, b || "(uten merke)"));
+  if (!chips.length) return "";
+  return `<div class="activefilters">${chips.join("")}<span class="act" data-act="clear-filters">Nullstill</span></div>`;
+}
+const anyFilter = () => Object.values(state.filters).some((a) => a.length);
+const activeFilterCount = () => Object.values(state.filters).reduce((a, x) => a + x.length, 0);
+const statActive = (facet, val) => state.filters[facet].length === 1 && state.filters[facet][0] === val;
 function brandOptions() {
   const set = new Set(state.inventory.map((i) => i.brand || ""));
   return [...set].sort((a, b) => a.localeCompare(b)).map((b) => ({ val: b, label: b || "(uten merke)" }));
 }
-const anyFilter = () => Object.values(state.filters).some((a) => a.length);
-const statActive = (facet, val) => state.filters[facet].length === 1 && state.filters[facet][0] === val;
-const activeFilterCount = () => Object.values(state.filters).reduce((a, x) => a + x.length, 0);
 function passesFilters(i) {
   const f = state.filters;
   return (!f.category.length || f.category.includes(i.category))
@@ -434,285 +457,275 @@ function passesFilters(i) {
     && (!f.quality.length || f.quality.includes(i.quality))
     && (!f.brand.length || f.brand.includes(i.brand || ""));
 }
-function filterDropdown(key, label, opts) {
-  const sel = state.filters[key];
-  const open = state.openFilter === key;
-  return `<div class="filter-dd ${open ? "open" : ""}">
-    <button class="filter-btn ${sel.length ? "active" : ""}" data-filter="${key}">${label}${sel.length ? ` <span class="fcount">${sel.length}</span>` : ""} <span class="caret">▾</span></button>
-    ${open ? `<div class="filter-pop" data-stop>
-      ${opts.map((o) => `<label><input type="checkbox" data-facet="${key}|${esc(o.val)}" ${sel.includes(o.val) ? "checked" : ""}> ${esc(o.label)}</label>`).join("")}
-      ${sel.length ? `<button class="filter-clear" data-clearfacet="${key}">Nullstill ${label.toLowerCase()}</button>` : ""}
-    </div>` : ""}
-  </div>`;
-}
-function filterBar() {
-  return `${state.openFilter ? `<div class="pop-catcher" data-act="close-filter"></div>` : ""}
-  <div class="filterbar">
-    <span class="filter-lead desktop-only">Filtre</span>
-    <div class="filter-row desktop-only">
-      ${filterDropdown("category", "Kategori", CATEGORIES.map((c) => ({ val: c, label: c })))}
-      ${filterDropdown("status", "Tilstand", STATUSES.map((s) => ({ val: s, label: STATUS_LABEL[s] })))}
-      ${filterDropdown("quality", "Kvalitet", QUALITIES.map((qv) => ({ val: qv, label: qv })))}
-      ${filterDropdown("brand", "Merke", brandOptions())}
-    </div>
-    <button class="btn ghost sm mobile-only" data-act="open-filtersheet">⚙ Filtre${activeFilterCount() ? ` (${activeFilterCount()})` : ""}</button>
-    ${anyFilter() ? `<button class="btn ghost sm" data-act="clear-filters">Nullstill alle</button>` : ""}
-    <span class="spacer"></span>
-    <button class="btn ghost sm" data-act="export-all">⬇ Eksporter</button>
-    <button class="btn" data-act="add-inv">+ Legg til</button>
-  </div>`;
-}
+const hit = (...vals) => { const q = state.q.trim().toLowerCase(); return !q || vals.some((v) => String(v ?? "").toLowerCase().includes(q)); };
+
 function renderFilterSheet() {
-  const group = (key, label, opts) => `<div class="sheet-group"><div class="sheet-label">${label}</div>
-    <div class="sheet-opts">${opts.map((o) => `<label class="chip ${state.filters[key].includes(o.val) ? "on" : ""}"><input type="checkbox" data-facet="${key}|${esc(o.val)}" ${state.filters[key].includes(o.val) ? "checked" : ""} hidden> ${esc(o.label)}</label>`).join("")}</div></div>`;
-  return `<div class="modal-bg" data-act="close-filtersheet"><div class="modal" data-stop>
-    <h3>Filtre</h3>
-    ${group("category", "Kategori", CATEGORIES.map((c) => ({ val: c, label: c })))}
-    ${group("status", "Tilstand", STATUSES.map((s) => ({ val: s, label: STATUS_LABEL[s] })))}
-    ${group("quality", "Kvalitet", QUALITIES.map((qv) => ({ val: qv, label: qv })))}
-    ${group("brand", "Merke", brandOptions())}
-    <div class="actions">${anyFilter() ? `<button class="btn danger" data-act="clear-filters">Nullstill alle</button>` : ""}<span class="spacer"></span><button class="btn" data-act="close-filtersheet">Ferdig</button></div>
+  const group = (key, label, opts) => `<div class="fset"><div class="leg">${label}</div>
+    <div class="chips">${opts.map((o) => `<span class="chip ${state.filters[key].includes(o.val) ? "on" : ""}" data-facet="${key}|${esc(o.val)}">${esc(o.label)}</span>`).join("")}</div></div>`;
+  return `<div class="sheet-bg" data-act="close-filtersheet"><div class="sheet" data-stop>
+    <div class="grab"></div>
+    <div class="shead"><div class="t"><h3>Filtre</h3><div class="sub">${activeFilterCount()} aktive</div></div>
+      <button class="x" data-act="close-filtersheet">✕</button></div>
+    <div class="sbody">
+      ${group("category", "Kategori", CATEGORIES.map((c) => ({ val: c, label: c })))}
+      ${group("status", "Tilstand", STATUSES.map((s) => ({ val: s, label: STATUS_LABEL[s] })))}
+      ${group("quality", "Kvalitet", QUALITIES.map((q) => ({ val: q, label: QUALITY_LABEL[q] })))}
+      ${group("brand", "Merke", brandOptions())}
+    </div>
+    <div class="sfoot">${anyFilter() ? `<button class="btn danger" data-act="clear-filters">Nullstill</button>` : ""}
+      <span class="spacer"></span><button class="btn" data-act="close-filtersheet">Ferdig</button></div>
   </div></div>`;
 }
 
-// ── Oversikt (med gruppering av like rader) ──
-function groupKey(i) { return [i.type, i.brand, i.model, i.size, i.category, i.status, i.quality, i.notes].join(""); }
-const invCells = (i) => `
-  <td style="color:var(--muted)">${esc(i.brand) || "–"}</td>
-  <td class="mono">${esc(i.size) || "–"}</td>
-  <td><span class="mono">${esc(i.category)}</span></td>
-  <td><span class="tag ${i.status}">${STATUS_LABEL[i.status]}</span></td>
-  <td class="q-${i.quality}" style="font-weight:600">${esc(i.quality)}</td>
-  <td style="color:var(--muted);font-size:13px">${esc(i.notes) || "–"}</td>`;
-const invRepl = (i) => { const r = replacementFor(i.id); return r.length ? `<span class="link-chip repl" data-goto-wish="${esc(r[0].id)}" title="Planlagt erstatning">↪ ${esc(r[0].type)}</span>` : ""; };
-const invPad = (d) => 14 + d * 22;
-
-// Tre-rader (tabell) – komponent med deler er utvidbar; like blad-søsken grupperes ×N.
-function invTreeRows(siblings, depth) {
+// ── Oversikt ─────────────────────────────────────────────────────────
+function groupKey(i) { return [i.type, i.brand, i.model, i.size, i.category, i.status, i.quality, i.notes].join(""); }
+const invSub = (i) => [i.brand, i.model, i.size, i.notes].filter(Boolean).join(" · ");
+function invReplTag(i) {
+  const r = replacementFor(i.id);
+  return r.length ? `<span class="tag repl" data-goto-wish="${esc(r[0].id)}" title="Planlagt erstatning">↪ Erstatning planlagt</span>` : "";
+}
+function invRow(i, opts = {}) {
+  const { caret = "", count = "", child = false, acts = "" } = opts;
+  const tags = [invReplTag(i), acts].filter(Boolean).join("");
+  const attr = opts.attr || `data-edit-inv="${i.id}"`;
+  const path = opts.path && invPath(i).length ? invPath(i).join(" › ") + " › " : "";
+  const sub = path + invSub(i);
+  return `<div class="row st-${i.status} click ${child ? "child" : ""}" ${attr}>
+    <div class="main">
+      <div class="title">${caret}${esc(i.type)}${count}</div>
+      ${sub ? `<div class="sub">${esc(sub)}</div>` : ""}
+      ${tags ? `<div class="tags">${tags}</div>` : ""}
+    </div>
+    <div class="col-status">${pillStatus(i.status)}</div>
+    <div class="col-quality">${qmeter(i.quality)}</div>
+  </div>`;
+}
+// Tre-rader: komponent med deler er utvidbar; like blad-søsken grupperes ×N.
+function invTree(siblings) {
   let html = ""; const seen = new Set();
   for (const i of siblings) {
     const kids = invChildren(i.id);
     if (kids.length) {
       const open = !!state.expandedNodes[i.id];
-      html += `<tr class="click parentrow" data-togglenode="${i.id}"><td style="padding-left:${invPad(depth)}px;font-weight:700">${open ? "▾" : "▸"} ${esc(i.type)} <span class="count">${kids.length} deler</span> ${invRepl(i)} <span class="link-chip" data-add-child="${i.id}">+ del</span> <span class="link-chip" data-edit-inv="${i.id}">✎</span></td>${invCells(i)}</tr>`;
-      if (open) html += invTreeRows(kids, depth + 1);
+      html += invRow(i, {
+        attr: `data-togglenode="${i.id}"`,
+        caret: `<span class="caret">${open ? "▾" : "▸"}</span> `,
+        count: ` <span class="count">${kids.length} deler</span>`,
+        acts: `<span class="act" data-add-child="${i.id}">+ Del</span><span class="act" data-edit-inv="${i.id}">Rediger</span>`,
+      });
+      if (open) html += `<div class="expand">${invTree(kids)}</div>`;
     } else {
       const k = groupKey(i); if (seen.has(k)) continue; seen.add(k);
       const grp = siblings.filter((x) => !invChildren(x.id).length && groupKey(x) === k);
-      if (grp.length === 1) {
-        html += `<tr class="click" data-edit-inv="${i.id}"><td style="padding-left:${invPad(depth)}px;font-weight:${depth ? 600 : 700}">${esc(i.type)} ${invRepl(i)}</td>${invCells(i)}</tr>`;
-      } else {
-        const gk = (i.parent_id || "") + "|" + k; const open = !!state.expandedGroups[gk]; const ek = encodeURIComponent(gk);
-        html += `<tr class="click grouprow" data-togglegroup="${ek}"><td style="padding-left:${invPad(depth)}px;font-weight:700">${open ? "▾" : "▸"} ${esc(i.type)} <span class="count">×${grp.length}</span></td>${invCells(i)}</tr>`;
-        if (open) html += grp.map((it) => `<tr class="click child" data-edit-inv="${it.id}"><td style="padding-left:${invPad(depth + 1)}px">${esc(it.type)} ${invRepl(it)}</td>${invCells(it)}</tr>`).join("");
-      }
+      if (grp.length === 1) { html += invRow(i); continue; }
+      const gk = (i.parent_id || "") + "|" + k; const open = !!state.expandedGroups[gk];
+      html += invRow(i, {
+        attr: `data-togglegroup="${encodeURIComponent(gk)}"`,
+        caret: `<span class="caret">${open ? "▾" : "▸"}</span> `,
+        count: ` <span class="count">×${grp.length}</span>`,
+      });
+      if (open) html += grp.map((it) => invRow(it, { child: true })).join("");
     }
   }
   return html;
 }
-// Tre-kort (mobil)
-function invTreeCards(siblings, depth) {
-  return siblings.map((i) => {
-    const kids = invChildren(i.id); const open = !!state.expandedNodes[i.id];
-    if (!kids.length) return `<div class="card click" data-edit-inv="${i.id}" style="margin-left:${depth * 12}px">
-      <div class="row1"><div><div class="type">${esc(i.type)}</div><div class="meta">${[esc(i.brand), esc(i.size), esc(i.category)].filter(Boolean).join(" · ")}</div></div><span class="tag ${i.status}">${STATUS_LABEL[i.status]}</span></div>
-      ${i.notes ? `<div class="note">${esc(i.notes)}</div>` : ""}${replacementFor(i.id).length ? `<div class="chiprow">${invRepl(i)}</div>` : ""}</div>`;
-    return `<div class="card" style="margin-left:${depth * 12}px">
-      <div class="row1 click" data-togglenode="${i.id}"><div><div class="type">${open ? "▾" : "▸"} ${esc(i.type)} <span class="count">${kids.length} deler</span></div><div class="meta">${esc(i.category)}</div></div><span class="tag ${i.status}">${STATUS_LABEL[i.status]}</span></div>
-      <div class="chiprow"><span class="link-chip" data-add-child="${i.id}">+ del</span><span class="link-chip" data-edit-inv="${i.id}">✎ Rediger</span></div>
-      ${open ? invTreeCards(kids, depth + 1) : ""}</div>`;
-  }).join("");
-}
-
 function viewOversikt() {
-  const all = state.inventory.filter((i) => !i.retired_at);   // aktivt utstyr
+  const all = state.inventory.filter((i) => !i.retired_at);
   const retired = state.inventory.filter((i) => i.retired_at);
   if (state.retiredView) return viewRetired(retired);
   const s = {
-    total: all.length, ok: all.filter((i) => i.status === "ok").length,
+    total: all.length,
+    ok: all.filter((i) => i.status === "ok").length,
     redusert: all.filter((i) => i.status === "redusert").length,
     ødelagt: all.filter((i) => i.status === "ødelagt").length,
-    dårlig: all.filter((i) => i.quality === "dårlig").length,
   };
-  const flat = anyFilter();   // filter aktivt → flat liste; ellers tre
-  let rows = "", cards = "";
-
+  const flat = anyFilter() || state.q.trim();
+  let sections = [];
   if (flat) {
-    const filtered = all.filter(passesFilters);
-    const groups = []; const gmap = new Map();
-    for (const i of filtered) { const k = groupKey(i); if (!gmap.has(k)) { gmap.set(k, []); groups.push(k); } gmap.get(k).push(i); }
-    const bc = (i) => { const p = invPath(i); return p.length ? `<span class="bc">${esc(p.join(" › "))} › </span>` : ""; };
-    rows = groups.map((k) => {
-      const g = gmap.get(k); const i = g[0];
-      if (g.length === 1) return `<tr class="click" data-edit-inv="${i.id}"><td style="font-weight:700">${bc(i)}${esc(i.type)} ${invRepl(i)}</td>${invCells(i)}</tr>`;
-      const open = !!state.expandedGroups[k]; const ek = encodeURIComponent(k);
-      return `<tr class="click grouprow" data-togglegroup="${ek}"><td style="font-weight:700">${open ? "▾" : "▸"} ${esc(i.type)} <span class="count">×${g.length}</span></td>${invCells(i)}</tr>
-        ${open ? g.map((it) => `<tr class="click child" data-edit-inv="${it.id}"><td style="padding-left:30px">${bc(it)}${esc(it.type)}</td>${invCells(it)}</tr>`).join("") : ""}`;
-    }).join("");
-    cards = filtered.map((i) => `<div class="card click" data-edit-inv="${i.id}">
-      <div class="row1"><div><div class="type">${esc(i.type)}</div><div class="meta">${invPath(i).length ? esc(invPath(i).join(" › ")) + " · " : ""}${[esc(i.brand), esc(i.size), esc(i.category)].filter(Boolean).join(" · ")}</div></div><span class="tag ${i.status}">${STATUS_LABEL[i.status]}</span></div>
-      ${i.notes ? `<div class="note">${esc(i.notes)}</div>` : ""}</div>`).join("");
+    const filtered = all.filter((i) => passesFilters(i) && hit(i.type, i.brand, i.model, i.size, i.notes, i.category));
+    sections = CATEGORIES.map((c) => ({ cat: c, items: filtered.filter((i) => i.category === c) })).filter((x) => x.items.length);
   } else {
-    rows = invTreeRows(invRoots(), 0);
-    cards = invTreeCards(invRoots(), 0);
+    const roots = invRoots();
+    sections = CATEGORIES.map((c) => ({ cat: c, items: roots.filter((i) => i.category === c) })).filter((x) => x.items.length);
   }
+  const body = sections.map((sec) => `
+    <div class="sec"><span class="t">${esc(sec.cat)} <span class="n">${sec.items.length}</span></span>
+      <span class="colhead status">Tilstand</span><span class="colhead quality">Kvalitet</span></div>
+    ${flat ? sec.items.map((i) => invRow(i, { path: true })).join("") : invTree(sec.items)}`).join("");
 
   return `
-    <div class="stats">
-      <div class="stat click ${!anyFilter() ? "on" : ""}" data-stat="all"><b>${s.total}</b><span>Totalt</span></div>
-      <div class="stat click ${statActive("status", "ok") ? "on" : ""}" data-stat="status:ok"><b style="color:var(--ok)">${s.ok}</b><span>OK</span></div>
-      <div class="stat click ${statActive("status", "redusert") ? "on" : ""}" data-stat="status:redusert"><b style="color:var(--warn)">${s.redusert}</b><span>Redusert</span></div>
-      <div class="stat click ${statActive("status", "ødelagt") ? "on" : ""}" data-stat="status:ødelagt"><b style="color:var(--bad)">${s.ødelagt}</b><span>Ødelagt</span></div>
-      <div class="stat click ${statActive("quality", "dårlig") ? "on" : ""}" data-stat="quality:dårlig"><b style="color:var(--warn)">${s.dårlig}</b><span>Dårlig kval.</span></div>
+    <div class="summary">
+      <div class="top">
+        <div class="big">${s.total} <span>enheter</span></div>
+        <div class="colhead">Tilstand</div>
+      </div>
+      <div class="meterbar">
+        <i style="flex:${s.ok || 0};background:var(--ok)"></i>
+        <i style="flex:${s.redusert || 0};background:var(--warn)"></i>
+        <i style="flex:${s.ødelagt || 0};background:var(--red)"></i>
+      </div>
+      <div class="legend">
+        <span data-stat="status:ok" class="${statActive("status", "ok") ? "on" : ""}"><b style="color:var(--ok)">${s.ok}</b> OK</span>
+        <span data-stat="status:redusert" class="${statActive("status", "redusert") ? "on" : ""}"><b style="color:var(--warn-ink)">${s.redusert}</b> redusert</span>
+        <span data-stat="status:ødelagt" class="${statActive("status", "ødelagt") ? "on" : ""}"><b style="color:var(--red)">${s.ødelagt}</b> ødelagt</span>
+      </div>
     </div>
-    ${filterBar()}
-    ${flat ? "" : `<div class="tree-hint">Klikk en komponent (f.eks. trommesett) for å se delene. Filtrer for å se alt flatt.</div>`}
-    <table>
-      <thead><tr><th>Type</th><th>Merke</th><th>Størrelse</th><th>Kategori</th><th>Tilstand</th><th>Kvalitet</th><th>Merknader</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="7" style="color:var(--muted)">Ingen treff.</td></tr>`}</tbody>
-    </table>
-    <div class="cards">${cards || `<p style="color:var(--muted)">Ingen treff.</p>`}</div>
-    ${retired.length ? `<div style="margin:14px 0 0"><button class="btn ghost sm" data-act="toggle-retired">⌫ Utgått utstyr (${retired.length})</button></div>` : ""}`;
+    ${searchBar("Søk i utstyr", `
+      <div class="fbtn" data-act="open-filtersheet">Filtre${activeFilterCount() ? ` <span class="n">${activeFilterCount()}</span>` : ""}</div>
+      <div class="add" data-act="add-inv">+</div>`)}
+    <div class="panel">${body || `<div class="muted-note">Ingen treff.</div>`}</div>
+    <div class="pad" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      <button class="btn ghost sm" data-act="export-all">↓ Eksporter</button>
+      ${retired.length ? `<button class="btn ghost sm" data-act="toggle-retired">⌫ Utgått utstyr (${retired.length})</button>` : ""}
+    </div>`;
 }
-
-// Utgått/erstattet utstyr (egen visning, bevart men ute av oversikten).
+// Utgått/erstattet utstyr (bevart, men ute av oversikten).
 function viewRetired(retired) {
   return `
-    <div class="toolbar"><button class="btn ghost sm" data-act="toggle-retired">← Tilbake til oversikt</button>
-      <span class="eyebrow">Utgått / erstattet utstyr</span></div>
-    <p style="color:var(--muted);font-size:13px">Utstyr som er erstattet av nyere innkjøp. Tas ikke med i oversikten, men er bevart.</p>
-    ${retired.length ? `<table>
-      <thead><tr><th>Type</th><th>Merke</th><th>Størrelse</th><th>Kategori</th><th></th></tr></thead>
-      <tbody>${retired.map((i) => `<tr>
-        <td style="font-weight:700">${esc(i.type)}</td><td style="color:var(--muted)">${esc(i.brand) || "–"}</td>
-        <td class="mono">${esc(i.size) || "–"}</td><td><span class="mono">${esc(i.category)}</span></td>
-        <td style="text-align:right"><span class="link-chip" data-unretire="${i.id}">↩ Gjenopprett</span> <span class="link-chip" data-del-inv="${i.id}">Slett</span></td>
-      </tr>`).join("")}</tbody></table>`
-      : `<p style="color:var(--muted)">Ingenting utgått.</p>`}`;
+    <div class="pad" style="padding-top:16px">
+      <button class="btn ghost sm" data-act="toggle-retired">← Tilbake til oversikt</button>
+      <p style="color:var(--muted);font-size:13px">Utstyr som er erstattet av nyere innkjøp. Tas ikke med i oversikten, men er bevart.</p>
+    </div>
+    <div class="panel">
+      <div class="sec"><span class="t">Utgått / erstattet <span class="n">${retired.length}</span></span></div>
+      ${retired.length ? retired.map((i) => `<div class="row dim">
+        <div class="main"><div class="title">${esc(i.type)}</div>
+          ${invSub(i) ? `<div class="sub">${esc(invSub(i))}</div>` : ""}
+          <div class="tags"><span class="act" data-unretire="${i.id}">↩ Gjenopprett</span><span class="act red" data-del-inv="${i.id}">Slett</span></div>
+        </div></div>`).join("") : `<div class="muted-note">Ingenting utgått.</div>`}
+    </div>`;
 }
 
-// ── Mangler (med art-kolonne, prisspenn og ekspanderbare alternativer) ──
+// ── Mangler ──────────────────────────────────────────────────────────
+function optionBlock(w, o) {
+  return `<div class="opt">
+    <div class="head">
+      <div class="m"><b>${esc(o.brand) || "Alternativ"}</b> ${esc(o.model)} ${o.size ? `<span class="mono">${esc(o.size)}</span>` : ""}
+        ${o.info ? `<div class="info">${esc(o.info)}</div>` : ""}</div>
+      <div class="price">${fmt(o.price)}</div>
+    </div>
+    <div class="acts">
+      <button class="btn brass sm" data-addtolist="${o.id}">+ Til liste</button>
+      <button class="btn ghost sm" data-buyopt="${w.id}|${o.id}">✓ Kjøpt</button>
+      ${o.link ? `<a class="act red" href="${esc(o.link)}" target="_blank" rel="noreferrer" data-stoplink>Produkt ↗</a>` : ""}
+      <span class="act" data-edit-opt="${w.id}|${o.id}">Rediger</span>
+      ${o.link ? `<span class="act" data-priceopt="${o.id}|${esc(o.link)}">⟳ Pris</span>` : ""}
+    </div>
+  </div>`;
+}
+function wishExpand(w) {
+  const opts = w.options || [];
+  return `<div class="expand pri-${w.priority}">
+    ${opts.length ? opts.map((o) => optionBlock(w, o)).join("")
+      : `<div class="opt-empty">Ingen alternativer ennå. Legg til et konkret produkt for å kunne kjøpe / legge i liste.</div>`}
+    <div class="rowacts">
+      <button class="btn ghost sm" data-edit-wish="${w.id}">✎ Rediger mangel</button>
+      <button class="btn ghost sm" data-addopt="${w.id}">+ Alternativ</button>
+      ${opts.length ? "" : `<button class="btn ghost sm" data-buywish="${w.id}">✓ Marker kjøpt</button>`}
+    </div>
+  </div>`;
+}
 function viewMangler() {
-  const kindChip = (w) => isErstatning(w)
-    ? `<span class="tag erstatning" data-goto-inv="${esc(w.replaces_inventory_id)}" title="Erstatter ${esc(inv(w.replaces_inventory_id)?.type || "")}">Erstatning</span>`
-    : `<span class="tag mangel">Mangel</span>`;
-  const listChips = (w) => listsWith(w.id).map((l) => `<span class="link-chip" data-goto-list="${esc(l.id)}">▤ ${esc(l.name)}</span>`).join("");
+  const items = state.wishlist.filter((w) => hit(w.type, w.category, w.notes));
+  const byPri = (p) => items.filter((w) => w.priority === p);
+  const cnt = { høy: byPri("høy").length, middels: byPri("middels").length, lav: byPri("lav").length };
+  const total = state.wishlist.reduce((a, w) => a + effPrice(w), 0);
 
-  function optionsBlock(w) {
-    const opts = w.options || [];
-    return `<div class="opts">
-      ${opts.length ? opts.map((o) => `<div class="opt">
-        <div class="opt-main">
-          <b>${esc(o.brand) || "Alternativ"}</b> ${esc(o.model)} ${o.size ? `<span class="opt-size">${esc(o.size)}</span>` : ""}
-          ${o.info ? `<div class="opt-info">${esc(o.info)}</div>` : ""}
-          <div class="opt-links">${o.link ? `<a href="${esc(o.link)}" target="_blank" rel="noreferrer">🔗 Produkt</a>` : ""}
-            <span class="link-chip" data-edit-opt="${w.id}|${o.id}">Rediger</span>
-            ${o.link ? `<span class="link-chip" data-priceopt="${o.id}|${esc(o.link)}">⟳ Pris</span>` : ""}
-            <span class="link-chip" data-addtolist="${o.id}">+ Til liste</span>
-            <span class="link-chip buy" data-buyopt="${w.id}|${o.id}">✓ Kjøpt</span></div>
+  const body = PRIORITIES.map((pri) => {
+    const list = byPri(pri);
+    if (!list.length) return "";
+    return `<div class="sec pri-${pri}"><span class="t">${PRI_LABEL[pri]} prioritet <span class="n">${list.length}</span></span>
+        <span class="colhead price">Est. pris</span></div>
+      ${list.map((w) => {
+        const open = !!state.expandedWish[w.id];
+        const n = (w.options || []).length;
+        const lines = priceLines(w);
+        const tags = [
+          isErstatning(w)
+            ? `<span class="tag erstatning" data-goto-inv="${esc(w.replaces_inventory_id)}">Erstatning</span>`
+            : `<span class="tag">Mangel</span>`,
+          ...listsWith(w.id).map((l) => `<span class="tag liste" data-goto-list="${esc(l.id)}">I liste: ${esc(l.name)}</span>`),
+          open ? "" : `<span class="act" data-edit-wish="${w.id}">Rediger</span>`,
+        ].filter(Boolean).join("");
+        return `<div class="row pri-${pri} click" data-togglewish="${w.id}">
+          <div class="main">
+            <div class="title"><span class="caret">${open ? "▾" : "▸"}</span> ${esc(w.type)}</div>
+            <div class="sub">${esc(w.category)}${n ? ` · ${n} alternativ${n > 1 ? "er" : ""}` : ""}</div>
+            <div class="tags">${tags}</div>
+          </div>
+          <div class="col-price">${lines.map((l) => `<div class="price">${l}</div>`).join("")}</div>
         </div>
-        <div class="opt-price price">${fmt(o.price)}</div>
-      </div>`).join("") : `<div class="opt empty">Ingen alternativer ennå. Legg til et konkret produkt for å kunne kjøpe / legge i liste.</div>`}
-      <div class="opt-actions">
-        <button class="btn ghost sm" data-edit-wish="${w.id}">✎ Rediger mangel (type, prioritet …)</button>
-        <button class="btn ghost sm" data-addopt="${w.id}">+ Alternativ</button>
-        ${opts.length ? "" : `<button class="btn ghost sm" data-buywish="${w.id}">✓ Marker kjøpt</button>`}
-      </div>
-    </div>`;
-  }
+        ${open ? wishExpand(w) : ""}`;
+      }).join("")}`;
+  }).join("");
 
   return `
-    <div class="toolbar">
-      <span class="eyebrow">Mangler og ønskede oppgraderinger</span>
-      <span class="spacer"></span>
-      <button class="btn ghost sm" data-act="fetch-prices" title="Henter priser fra lenker">⟳ Hent priser</button>
-      <button class="btn" data-act="add-wish">+ Legg til</button>
+    <div class="summary">
+      <div class="top">
+        <div class="big">${state.wishlist.length} <span>mangler</span></div>
+        <div class="money">${fmt(total)}</div>
+      </div>
+      <div class="meterbar">
+        <i style="flex:${cnt.høy || 0};background:var(--red)"></i>
+        <i style="flex:${cnt.middels || 0};background:var(--warn)"></i>
+        <i style="flex:${cnt.lav || 0};background:var(--lav)"></i>
+      </div>
+      <div class="legend">
+        <span><b style="color:var(--red)">${cnt.høy}</b> høy</span>
+        <span><b style="color:var(--warn-ink)">${cnt.middels}</b> middels</span>
+        <span><b style="color:var(--faint-2)">${cnt.lav}</b> lav</span>
+      </div>
     </div>
-    ${PRIORITIES.map((pri) => {
-      const items = state.wishlist.filter((w) => w.priority === pri);
-      if (!items.length) return "";
-      return `<div class="section-title" style="color:var(--${pri === "høy" ? "bad" : pri === "middels" ? "brass-d" : "muted"})">◆ ${PRI_LABEL[pri]} prioritet <span class="rule"></span></div>
-      <table>
-        <thead><tr><th></th><th>Type</th><th>Art</th><th>Kategori</th><th>Est. pris</th><th>Koblinger</th></tr></thead>
-        <tbody>${items.map((w) => { const open = !!state.expandedWish[w.id]; const n = (w.options || []).length;
-          return `<tr class="click" data-togglewish="${w.id}">
-            <td style="width:24px;color:var(--faint)">${open ? "▾" : "▸"}</td>
-            <td style="font-weight:700">${esc(w.type)}${n ? ` <span class="count">${n} alt.</span>` : ""}</td>
-            <td>${kindChip(w)}</td>
-            <td><span class="mono">${esc(w.category)}</span></td>
-            <td class="price">${priceDisplay(w)}</td>
-            <td>${listChips(w)}</td>
-          </tr>
-          ${open ? `<tr class="exp"><td></td><td colspan="5">${optionsBlock(w)}</td></tr>` : ""}`;
-        }).join("")}</tbody>
-      </table>
-      <div class="cards">${items.map((w) => { const open = !!state.expandedWish[w.id]; const n = (w.options || []).length;
-        return `<div class="card">
-          <div class="row1 click" data-togglewish="${w.id}">
-            <div><div class="type">${open ? "▾" : "▸"} ${esc(w.type)}</div><div class="meta">${kindChip(w)} ${esc(w.category)}${n ? ` · ${n} alt.` : ""}</div></div>
-            <span class="price">${priceDisplay(w)}</span>
-          </div>
-          <div class="chiprow">${listChips(w)}</div>
-          ${open ? optionsBlock(w) : `<div class="chiprow" style="margin-top:8px"><span class="link-chip" data-edit-wish="${w.id}">✎ Rediger mangel</span></div>`}
-        </div>`;
-      }).join("")}</div>`;
-    }).join("") || `<p style="color:var(--muted)">Ingen mangler registrert.</p>`}`;
+    ${searchBar("Søk i mangler", `
+      <div class="gbtn" data-act="fetch-prices" title="Henter priser fra lenker">⟳ Priser</div>
+      <div class="add" data-act="add-wish">+</div>`)}
+    <div class="panel">${body || `<div class="muted-note">Ingen mangler registrert.</div>`}</div>`;
 }
 
-// ── Innkjøpslister ──
+// ── Innkjøp ──────────────────────────────────────────────────────────
 function viewLister() {
   const active = state.lists.filter((l) => !l.archived_at);
   const archived = state.lists.filter((l) => l.archived_at);
   if (state.listArchive) return viewListArchive(archived);
+  const varer = active.reduce((a, l) => a + (l.items || []).length, 0);
+  const sum = active.reduce((a, l) => a + listSum(l), 0);
   return `
-    <div class="toolbar"><span class="eyebrow">Innkjøpslister</span><span class="spacer"></span>
-      ${archived.length ? `<button class="btn ghost sm" data-act="toggle-archive">📁 Kjøpt/arkiv (${archived.length})</button>` : ""}
-      <button class="btn" data-act="add-list">+ Ny liste</button></div>
+    <div class="summary row-style">
+      <div style="flex:1">
+        <div class="eyebrow">${active.length} liste${active.length === 1 ? "" : "r"} · ${varer} varer</div>
+        <div class="money">${fmt(sum)}</div>
+      </div>
+      <button class="btn" data-act="add-list">+ Ny liste</button>
+    </div>
     ${state.exportMenu ? `<div class="pop-catcher" data-act="close-export"></div>` : ""}
-    ${active.length ? `<div class="lists-grid">${active.map(listCard).join("")}</div>`
-      : `<p style="color:var(--muted)">Ingen aktive lister. Lag én, og legg inn mangler du vil kjøpe sammen.</p>`}
-    <div class="grand"><div><div class="label">Sum alle mangler (overordnet)</div></div><div class="val">${fmt(manglerTotal())}</div></div>`;
+    <div class="panel">${active.length ? active.map(listSection).join("") : `<div class="muted-note">Ingen aktive lister. Lag én, og legg inn produktene du vil kjøpe sammen.</div>`}</div>
+    <div class="pad" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      ${archived.length ? `<button class="btn ghost sm" data-act="toggle-archive">▤ Kjøpt / arkiv (${archived.length})</button>` : ""}
+    </div>
+    <div class="grand"><div class="label">Sum alle mangler (overordnet)</div><div class="val">${fmt(manglerTotal())}</div></div>`;
 }
-function viewListArchive(archived) {
-  return `
-    <div class="toolbar"><button class="btn ghost sm" data-act="toggle-archive">← Tilbake</button>
-      <span class="eyebrow">Kjøpt / arkiverte lister</span></div>
-    ${archived.length ? `<div class="lists-grid">${archived.map((l) => `<div class="list-card" style="opacity:.85">
-      <div class="head"><h3>${esc(l.name)}</h3>
-        <div class="sum" style="color:var(--ok)">✓ Kjøpt${l.archived_at ? " · " + esc(String(l.archived_at).slice(0, 10)) : ""}</div>
-        ${l.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${esc(l.notes)}</div>` : ""}</div>
-      <div class="foot"><span style="flex:1;color:var(--muted);font-size:12px">Produktene ligger nå i inventar.</span>
-        <span class="link-chip" data-unarchive="${l.id}">↩ Gjenåpne</span>
-        <button class="btn danger sm" data-del-list="${l.id}">Slett</button></div>
-    </div>`).join("")}</div>` : `<p style="color:var(--muted)">Ingen arkiverte lister.</p>`}`;
-}
-function listCard(l) {
+function listSection(l) {
   const sum = listSum(l);
-  // Hver linje ER et produkt (option); mangelen er tilbake-ref.
   const items = (l.items || []).map((it) => ({ it, o: optionById(it.option_id), w: wish(it.wishlist_id) })).filter((x) => x.o);
   const pct = l.budget ? Math.min(100, (sum / l.budget) * 100) : 0;
-  return `<div class="list-card">
-    <div class="head">
-      <div style="display:flex;align-items:center;gap:8px"><h3 style="flex:1">${esc(l.name)}</h3><span class="link-chip" data-edit-list="${l.id}">Rediger</span></div>
-      <div class="sum">Sum: <b>${fmt(sum)}</b>${l.budget ? ` <span style="color:var(--faint)">/ ${fmt(l.budget)}</span>` : ""}</div>
-      ${l.budget ? `<div class="budget-bar ${sum > l.budget ? "over" : ""}"><i style="width:${pct}%"></i></div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">${sum <= l.budget ? "Gjenstår " + fmt(l.budget - sum) : "Over med " + fmt(sum - l.budget)}</div>` : ""}
-      ${l.notes ? `<div style="font-size:12px;color:var(--muted);margin-top:6px">${esc(l.notes)}</div>` : ""}
-    </div>
-    <div class="body">
-      ${items.length ? items.map(({ it, o, w }) => `<div class="li">
-          <div style="flex:1;min-width:0">
-            <div class="li-prod">${o.link ? `<a href="${esc(o.link)}" target="_blank" rel="noreferrer">${esc(optionName(o))}</a>` : esc(optionName(o))}</div>
-            <div class="li-ref ${w ? "click" : ""}" ${w ? `data-li-edit="${w.id}"` : ""}>↳ ${w ? esc(w.type) : "mangel fjernet"}</div>
-          </div>
-          <span class="price">${fmt((o.price || 0) * (it.qty || 1))}</span>
-          <span class="x" data-rmitem="${l.id}|${o.id}" title="Fjern">✕</span>
-        </div>`).join("") : `<div class="empty">Tom – legg til produkter (alternativer fra mangler).</div>`}
-    </div>
-    <div class="foot">
+  const over = l.budget ? sum > l.budget : false;
+  return `
+    <div class="sec list"><span class="t">${esc(l.name)} <span class="n">${items.length}</span></span>
+      <span class="sum">${fmt(sum)}</span>
+      <span class="act" data-edit-list="${l.id}">✎</span></div>
+    ${items.length ? items.map(({ it, o, w }) => `<div class="li">
+        <div class="m">
+          <div class="n">${o.link ? `<a href="${esc(o.link)}" target="_blank" rel="noreferrer" data-stoplink>${esc(optionName(o))}</a>` : esc(optionName(o))}</div>
+          <div class="ref ${w ? "click" : ""}" ${w ? `data-li-edit="${w.id}"` : ""}>↳ ${w ? esc(w.type) : "mangel fjernet"}</div>
+        </div>
+        <span class="price">${fmt((o.price || 0) * (it.qty || 1))}</span>
+        <span class="x" data-rmitem="${l.id}|${o.id}" title="Fjern">✕</span>
+      </div>`).join("") : `<div class="li empty">Tom – legg til produkter (alternativer fra mangler).</div>`}
+    ${l.notes ? `<div class="li" style="color:var(--muted);font-size:12.5px">${esc(l.notes)}</div>` : ""}
+    <div class="rowacts flat">
       <button class="btn ghost sm" data-add-items="${l.id}">+ Legg til varer</button>
       <div class="export-wrap">
-        <button class="btn ghost sm" data-export-toggle="${l.id}">⬇ Eksporter ▾</button>
+        <button class="btn ghost sm" data-export-toggle="${l.id}">↓ Eksporter</button>
         ${state.exportMenu === l.id ? `<div class="export-menu">
           <button data-export-xlsx="${l.id}">▦ Excel (.xlsx)</button>
           <button data-export-print="${l.id}">⎙ Skriv ut / PDF</button>
@@ -720,38 +733,49 @@ function listCard(l) {
       </div>
       ${items.length ? `<button class="btn brass sm" data-buy-list="${l.id}">✓ Marker kjøpt</button>` : ""}
       <span style="flex:1"></span>
-      <button class="btn danger sm" data-del-list="${l.id}">Slett</button>
+      <span class="act red" data-del-list="${l.id}">Slett</span>
     </div>
-  </div>`;
+    ${l.budget ? `<div class="budget ${over ? "over" : ""}">
+      <div class="b1"><span>Budsjett ${fmt(l.budget)}</span><b>${over ? "Over med " + fmt(sum - l.budget) : fmt(l.budget - sum) + " igjen"}</b></div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+    </div>` : ""}`;
 }
-
-// ── Merker (godkjente/foretrukne merker) ──
-function viewMerker() {
-  const cats = [...new Set(state.brands.map((b) => b.category))];
-  const order = BRAND_CATS.filter((c) => cats.includes(c)).concat(cats.filter((c) => !BRAND_CATS.includes(c)));
+function viewListArchive(archived) {
   return `
-    <div class="toolbar">
-      <span class="eyebrow">Godkjente merker</span>
-      <span style="color:var(--muted);font-size:13px">Foretrukne leverandører</span>
-      <span class="spacer"></span>
-      <button class="btn" data-act="add-brand">+ Nytt merke</button>
-    </div>
-    ${state.brands.length ? order.map((cat) => `
-      <div class="section-title">${cat} <span class="rule"></span></div>
-      <div class="brand-grid">
-        ${state.brands.filter((b) => b.category === cat).map((b) => `<div class="brand-card click" data-edit-brand="${b.id}">
-          <div class="brand-name">${esc(b.name)}</div>
-          ${b.notes ? `<div class="brand-notes">${esc(b.notes)}</div>` : `<div class="brand-notes" style="color:var(--faint)">Foretrukket innen ${esc(cat).toLowerCase()}</div>`}
-        </div>`).join("")}
-      </div>`).join("")
-    : `<p style="color:var(--muted)">Ingen merker registrert ennå.</p>`}`;
+    <div class="pad" style="padding-top:16px"><button class="btn ghost sm" data-act="toggle-archive">← Tilbake</button></div>
+    <div class="panel">
+      <div class="sec"><span class="t">Kjøpt / arkiverte lister <span class="n">${archived.length}</span></span></div>
+      ${archived.length ? archived.map((l) => `<div class="li">
+        <div class="m"><div class="n">${esc(l.name)}</div>
+          <div class="ref" style="color:var(--ok)">✓ Kjøpt${l.archived_at ? " · " + esc(String(l.archived_at).slice(0, 10)) : ""}</div></div>
+        <span class="act" data-unarchive="${l.id}">↩ Gjenåpne</span>
+        <span class="act red" data-del-list="${l.id}">Slett</span>
+      </div>`).join("") : `<div class="muted-note">Ingen arkiverte lister.</div>`}
+    </div>`;
 }
 
-// ── Generér oversikt ──
+// ── Merker ───────────────────────────────────────────────────────────
+function viewMerker() {
+  const brands = state.brands.filter((b) => hit(b.name, b.notes, b.category));
+  const cats = [...new Set(brands.map((b) => b.category))];
+  const order = BRAND_CATS.filter((c) => cats.includes(c)).concat(cats.filter((c) => !BRAND_CATS.includes(c)));
+  const body = order.map((cat) => {
+    const list = brands.filter((b) => b.category === cat);
+    return `<div class="sec"><span class="t">${esc(cat)}</span><span class="colhead">${list.length}</span></div>
+      ${list.map((b) => `<div class="brow" data-edit-brand="${b.id}">
+        <div class="n"><b>${esc(b.name)}</b><span>${esc(b.notes) || "Foretrukket innen " + esc(cat).toLowerCase()}</span></div>
+        <span class="chev">›</span>
+      </div>`).join("")}`;
+  }).join("");
+  return `
+    ${searchBar("Søk merke", `<div class="add" data-act="add-brand">+ Nytt</div>`)}
+    <div class="panel">${body || `<div class="muted-note">Ingen merker registrert ennå.</div>`}</div>`;
+}
+
+// ── Generér oversikt ─────────────────────────────────────────────────
 function viewGenerer() {
   const minS = state.ovMinStatus, minQ = state.ovMinQuality;
   const pass = (i) => (minS === "Alle" || STATUS_RANK[i.status] >= STATUS_RANK[minS]) && (minQ === "Alle" || QUALITY_RANK[i.quality] >= QUALITY_RANK[minQ]);
-  // Kun toppnivå – deler/underdeler (f.eks. enkelttrommer i et sett) tas ikke med.
   const included = state.inventory.filter((i) => (!i.parent_id || !inv(i.parent_id)) && pass(i));
   const date = new Date().toLocaleDateString("nb-NO", { day: "2-digit", month: "2-digit", year: "numeric" });
   const sel = (label, key, val, opts) => `<div class="field"><label>${label}</label><select data-ov="${key}">${opts.map((o) => `<option value="${o[0]}" ${val === o[0] ? "selected" : ""}>${o[1]}</option>`).join("")}</select></div>`;
@@ -763,7 +787,7 @@ function viewGenerer() {
       <div style="flex:1"></div>
       <button class="btn ghost sm" data-act="copy-report">⧉ Kopier</button>
       <button class="btn ghost sm" data-act="print-report">⎙ Skriv ut</button>
-      <button class="btn brass" data-act="download-report">⬇ Last ned</button>
+      <button class="btn brass" data-act="download-report">↓ Last ned</button>
     </div>
     <div class="report" id="report">
       <div class="report-head">
@@ -806,124 +830,204 @@ function reportText() {
   return out;
 }
 
-// ── Modal ──
+// ── Ark (skjemaer) ───────────────────────────────────────────────────
+function sheet({ title, sub, body, del, saveAct }) {
+  return `<div class="sheet-bg" data-act="close-modal"><div class="sheet" data-stop>
+    <div class="grab"></div>
+    <div class="shead"><div class="t"><h3>${esc(title)}</h3>${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div>
+      <button class="x" data-act="close-modal">✕</button></div>
+    <div class="sbody">${body}</div>
+    <div class="sfoot">
+      ${del ? `<button class="btn danger" data-act="${del}">Slett</button>` : ""}
+      <span class="spacer"></span>
+      <button class="btn ghost" data-act="close-modal">Avbryt</button>
+      <button class="btn" data-act="${saveAct}">Lagre</button>
+    </div>
+  </div></div>`;
+}
+const fTxt = (label, key, item, type = "text", extra = "") =>
+  `<div class="field"><label>${label}</label><input data-f="${key}" type="${type}" value="${esc(item[key] ?? "")}" ${extra} /></div>`;
+const fArea = (label, key, item, ph = "") =>
+  `<div class="field"><label>${label}</label><textarea data-f="${key}" placeholder="${esc(ph)}">${esc(item[key] ?? "")}</textarea></div>`;
+const fSel = (label, key, item, opts) =>
+  `<div class="field"><label>${label}</label><select data-f="${key}">${opts.map(([v, t]) => `<option value="${esc(v)}" ${String(item[key] ?? "") === String(v) ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></div>`;
+// Segmentert valg – erstatter nedtrekk med få faste verdier.
+const fSeg = (label, key, item, kind, opts) =>
+  `<div class="field"><label>${label}</label><div class="seg ${kind}">${opts.map(([v, t]) =>
+    `<button type="button" data-seg="${key}|${esc(v)}" data-v="${esc(v)}" class="${item[key] === v ? "on" : ""}">${esc(t)}</button>`).join("")}</div></div>`;
+
 function renderModal() {
   const m = state.modal;
-  if (m.kind === "list-form") return modalListForm(m);
-  if (m.kind === "list-items") return modalListItems(m);
-  if (m.kind === "brand-form") return modalBrandForm(m);
-  if (m.kind === "option-form") return modalOptionForm(m);
-  if (m.kind === "choose-list") return modalChooseList(m);
-  return modalEntity(m);
+  if (m.kind === "list-form") return sheetListForm(m);
+  if (m.kind === "list-items") return sheetListItems(m);
+  if (m.kind === "brand-form") return sheetBrandForm(m);
+  if (m.kind === "option-form") return sheetOptionForm(m);
+  if (m.kind === "choose-list") return sheetChooseList(m);
+  return m.kind.includes("inv") ? sheetInv(m) : sheetWish(m);
 }
-function modalEntity(m) {
-  const { kind, item } = m;
-  const isInv = kind.includes("inv");
-  const isNew = kind.startsWith("add");
-  const title = isInv ? (isNew ? "Legg til utstyr" : "Rediger utstyr") : (isNew ? "Legg til mangel" : "Rediger mangel");
-  const txt = (label, key, type = "text") => `<div class="field"><label>${label}</label><input data-f="${key}" type="${type}" value="${esc(item[key] ?? "")}" /></div>`;
-  const sel = (label, key, opts) => `<div class="field"><label>${label}</label><select data-f="${key}">${opts.map((o) => `<option ${item[key] === o ? "selected" : ""}>${o}</option>`).join("")}</select></div>`;
-  const brandList = `<datalist id="brandlist">${state.brands.map((b) => `<option value="${esc(b.name)}">`).join("")}</datalist>`;
-  const invReplaceOpts = state.inventory.filter((i) => i.quality === "dårlig" || i.status !== "ok");
+function sheetInv(m) {
+  const item = m.item, isNew = m.kind.startsWith("add");
   const parentOpts = (() => {
     const skip = new Set([item.id, ...(item.id ? invDescendants(item.id) : [])]);
     return state.inventory.filter((p) => !skip.has(p.id));
   })();
-  const body = isInv ? `
-    ${txt("Type", "type")}
-    <div class="field"><label>Merke</label><input data-f="brand" list="brandlist" value="${esc(item.brand ?? "")}" />${brandList}</div>
-    ${txt("Modell", "model")}${txt("Størrelse", "size")}
-    ${sel("Kategori", "category", CATEGORIES)}${sel("Tilstand", "status", STATUSES)}${sel("Kvalitet", "quality", QUALITIES)}
-    ${txt("Merknader", "notes")}
-    <div class="field"><label>Del av (komponent, valgfritt)</label><select data-f="parent_id">
-      <option value="">– ingen (toppnivå) –</option>
-      ${parentOpts.map((p) => `<option value="${esc(p.id)}" ${item.parent_id === p.id ? "selected" : ""}>${esc(invPath(p).concat(p.type).join(" › "))}</option>`).join("")}
-    </select></div>` : `
-    ${txt("Type", "type")}${sel("Kategori", "category", CATEGORIES)}${sel("Prioritet", "priority", PRIORITIES)}
-    ${txt("Estimert pris (kr)", "estimated_price", "number")}${txt("Link", "link")}${txt("Merknader", "notes")}
-    <div class="field"><label>Erstatter (utstyr i dårlig stand)</label><select data-f="replaces_inventory_id">
-      <option value="">– ingen (vanlig mangel) –</option>
-      ${invReplaceOpts.map((i) => `<option value="${esc(i.id)}" ${item.replaces_inventory_id === i.id ? "selected" : ""}>${esc(i.type)} (${i.quality}/${STATUS_LABEL[i.status]})</option>`).join("")}
-    </select></div>`;
-  return `<div class="modal-bg" data-act="close-modal"><div class="modal" data-stop>
-    <h3>${esc(title)}</h3>${body}
-    <div class="actions">${!isNew ? `<button class="btn danger" data-act="del">Slett</button>` : ""}<span class="spacer"></span>
-      <button class="btn ghost" data-act="close-modal">Avbryt</button><button class="btn" data-act="save">Lagre</button></div>
-  </div></div>`;
+  const body = `
+    <datalist id="brandlist">${state.brands.map((b) => `<option value="${esc(b.name)}">`).join("")}</datalist>
+    <div class="fset"><div class="leg">Hva det er</div>
+      ${fTxt("Type", "type", item)}
+      <div class="frow">
+        <div class="field"><label>Merke</label><input data-f="brand" list="brandlist" value="${esc(item.brand ?? "")}" placeholder="—" /></div>
+        ${fTxt("Modell", "model", item, "text", 'placeholder="—"')}
+      </div>
+      <div class="frow">
+        ${fTxt("Størrelse", "size", item, "text", 'placeholder="—"')}
+        ${fSel("Kategori", "category", item, CATEGORIES.map((c) => [c, c]))}
+      </div>
+    </div>
+    <div class="fset"><div class="leg">Tilstand og kvalitet</div>
+      ${fSeg("Tilstand", "status", item, "status", STATUSES.map((s) => [s, STATUS_LABEL[s]]))}
+      ${fSeg("Kvalitet", "quality", item, "quality", QUALITIES.map((q) => [q, QUALITY_LABEL[q]]))}
+    </div>
+    <div class="fset"><div class="leg">Plassering og notat</div>
+      ${fSel("Del av komponent", "parent_id", item, [["", "– ingen (toppnivå) –"], ...parentOpts.map((p) => [p.id, invPath(p).concat(p.type).join(" › ")])])}
+      ${fArea("Merknader", "notes", item, "f.eks. hvor den står, hva som er slitt")}
+    </div>`;
+  const sub = item.category ? `${item.category}${item.updated_at ? " · sist endret " + String(item.updated_at).slice(0, 10) : ""}` : "";
+  return sheet({ title: isNew ? "Legg til utstyr" : "Rediger utstyr", sub, body, del: isNew ? null : "del", saveAct: "save" });
 }
-function modalListForm(m) {
+function sheetWish(m) {
+  const item = m.item, isNew = m.kind.startsWith("add");
+  const repl = !!item.replaces_inventory_id;
+  const invReplaceOpts = state.inventory.filter((i) => i.quality === "dårlig" || i.status !== "ok");
+  const n = (item.options || []).length;
+  const body = `
+    <div class="fset">
+      ${fTxt("Type", "type", item)}
+      ${fSel("Kategori", "category", item, CATEGORIES.map((c) => [c, c]))}
+    </div>
+    <div class="fset">
+      ${fSeg("Prioritet", "priority", item, "priority", PRIORITIES.map((p) => [p, PRI_LABEL[p]]))}
+      <div class="field"><label>Estimert pris</label>
+        <div class="suffix"><input data-f="estimated_price" type="number" value="${esc(item.estimated_price ?? "")}" placeholder="0" /><span class="u">kr</span></div>
+      </div>
+      <div class="field"><label>Produktlenke</label>
+        <div class="withbtn">
+          <input data-f="link" value="${esc(item.link ?? "")}" placeholder="https://…" />
+          <button class="btn brass sm" data-act="wish-price" style="white-space:nowrap">⟳ Pris</button>
+        </div>
+      </div>
+    </div>
+    <div class="fset">
+      <div class="switch" style="margin-bottom:12px">
+        <div class="m"><b>Erstatter eksisterende utstyr</b><span>${repl ? "På — velg hva som byttes ut" : "Av — dette er en vanlig mangel"}</span></div>
+        <div class="sw ${repl ? "on" : ""}" data-switch="replaces_inventory_id"><i></i></div>
+      </div>
+      ${repl ? fSel("Erstatter", "replaces_inventory_id", item, invReplaceOpts.map((i) => [i.id, `${i.type} (${i.quality}/${STATUS_LABEL[i.status]})`])) : ""}
+      ${fArea("Merknader", "notes", item, "valgfritt")}
+    </div>`;
+  return sheet({
+    title: isNew ? "Legg til mangel" : "Rediger mangel",
+    sub: n ? `${n} alternativ${n > 1 ? "er" : ""} knyttet til denne` : "",
+    body, del: isNew ? null : "del", saveAct: "save",
+  });
+}
+function sheetOptionForm(m) {
   const item = m.item, isNew = !item.id;
-  return `<div class="modal-bg" data-act="close-modal"><div class="modal" data-stop>
-    <h3>${isNew ? "Ny innkjøpsliste" : "Rediger liste"}</h3>
-    <div class="field"><label>Navn</label><input data-f="name" value="${esc(item.name ?? "")}" placeholder="f.eks. NM 2026" /></div>
-    <div class="field"><label>Budsjett (kr, valgfritt)</label><input data-f="budget" type="number" value="${item.budget ?? ""}" /></div>
-    <div class="field"><label>Notat</label><input data-f="notes" value="${esc(item.notes ?? "")}" /></div>
-    <div class="actions">${!isNew ? `<button class="btn danger" data-del-list="${item.id}">Slett</button>` : ""}<span class="spacer"></span>
-      <button class="btn ghost" data-act="close-modal">Avbryt</button><button class="btn" data-act="save-list">Lagre</button></div>
-  </div></div>`;
+  const body = `
+    <datalist id="brandlist">${state.brands.map((b) => `<option value="${esc(b.name)}">`).join("")}</datalist>
+    <div class="fset">
+      <div class="field"><label>Produsent / merke</label><input data-f="brand" list="brandlist" value="${esc(item.brand ?? "")}" /></div>
+      <div class="frow">${fTxt("Modell", "model", item)}${fTxt("Størrelse", "size", item)}</div>
+      ${fArea("Annen info", "info", item)}
+    </div>
+    <div class="fset">
+      <div class="field"><label>Pris</label>
+        <div class="suffix"><input data-f="price" type="number" value="${esc(item.price ?? "")}" placeholder="0" /><span class="u">kr</span></div>
+      </div>
+      <div class="field"><label>Produktlenke</label>
+        <div class="withbtn">
+          <input data-f="link" value="${esc(item.link ?? "")}" placeholder="https://…" />
+          <button class="btn brass sm" data-act="opt-price" style="white-space:nowrap">⟳ Pris</button>
+        </div>
+      </div>
+    </div>`;
+  return sheet({ title: isNew ? "Nytt alternativ" : "Rediger alternativ", body, del: isNew ? null : "del-opt", saveAct: "save-opt" });
 }
-function modalListItems(m) {
+function sheetBrandForm(m) {
+  const item = m.item, isNew = !item.id;
+  const usedInv = item.name ? state.inventory.filter((i) => (i.brand || "") === item.name).length : 0;
+  const usedOpt = item.name ? state.wishlist.reduce((a, w) => a + (w.options || []).filter((o) => (o.brand || "") === item.name).length, 0) : 0;
+  const body = `
+    <div class="fset">
+      <div class="field"><label>Navn</label><input data-f="name" value="${esc(item.name ?? "")}" placeholder="f.eks. Adams" style="font-family:var(--font-display);font-size:17px;font-weight:600" /></div>
+      <div class="field"><label>Foretrukket innen</label>
+        <div class="chips">${BRAND_CATS.map((c) => `<span class="chip ${item.category === c ? "on" : ""}" data-seg="category|${esc(c)}">${esc(c)}</span>`).join("")}</div>
+      </div>
+      ${fArea("Notat", "notes", item, "hva merket er bra på")}
+      ${!isNew ? `<div class="hint"><div class="leg">I bruk</div><div class="v">${usedInv} enhet${usedInv === 1 ? "" : "er"} i inventaret · ${usedOpt} alternativ${usedOpt === 1 ? "" : "er"} i Mangler</div></div>` : ""}
+    </div>`;
+  return sheet({ title: isNew ? "Nytt merke" : "Rediger merke", body, del: isNew ? null : "del-brand", saveAct: "save-brand" });
+}
+function sheetListForm(m) {
+  const item = m.item, isNew = !item.id;
+  const body = `<div class="fset">
+    ${fTxt("Navn", "name", item, "text", 'placeholder="f.eks. NM 2026"')}
+    <div class="field"><label>Budsjett (valgfritt)</label>
+      <div class="suffix"><input data-f="budget" type="number" value="${esc(item.budget ?? "")}" placeholder="0" /><span class="u">kr</span></div>
+    </div>
+    ${fArea("Notat", "notes", item)}
+  </div>`;
+  return sheet({ title: isNew ? "Ny innkjøpsliste" : "Rediger liste", body, del: isNew ? null : "del-list-sheet", saveAct: "save-list" });
+}
+function sheetListItems(m) {
   const l = byId(state.lists, m.listId); if (!l) { state.modal = null; return ""; }
   const inList = new Set((l.items || []).map((it) => it.option_id));
-  // Velg PRODUKTER (alternativer). Hver mangel viser sine alternativer; haker man av
-  // legges DET produktet i lista. Mangler uten alternativ kan ikke legges til.
-  return `<div class="modal-bg" data-act="close-modal"><div class="modal" data-stop>
-    <h3>Produkter i «${esc(l.name)}»</h3>
+  const body = `<div class="fset">
     <p style="color:var(--muted);font-size:12.5px;margin:0 0 10px">En liste inneholder konkrete produkter. Huk av alternativene som skal kjøpes.</p>
     <div class="picklist">${state.wishlist.map((w) => {
       const opts = w.options || [];
       const head = `<div class="pick-mangel">${esc(w.type)} <span style="color:var(--faint);font-size:11px">${esc(w.category)}</span></div>`;
-      if (!opts.length) return head + `<div class="pick-empty">Ingen alternativ ennå – legg til et i Mangler-fanen først.</div>`;
+      if (!opts.length) return head + `<div class="pick-empty">Ingen alternativ ennå – legg til et i Mangler først.</div>`;
       return head + opts.map((o) => `<label class="pick-opt"><input type="checkbox" data-toggleitem="${l.id}|${o.id}" ${inList.has(o.id) ? "checked" : ""}>
         <span style="flex:1;min-width:0">${esc(optionName(o))}</span>
         <span class="price">${fmt(o.price)}</span></label>`).join("");
     }).join("")}</div>
-    <div class="actions"><span class="spacer"></span><button class="btn" data-act="close-modal">Ferdig</button></div>
+  </div>`;
+  return `<div class="sheet-bg" data-act="close-modal"><div class="sheet" data-stop>
+    <div class="grab"></div>
+    <div class="shead"><div class="t"><h3>Produkter i «${esc(l.name)}»</h3></div><button class="x" data-act="close-modal">✕</button></div>
+    <div class="sbody">${body}</div>
+    <div class="sfoot"><span class="spacer"></span><button class="btn" data-act="close-modal">Ferdig</button></div>
   </div></div>`;
 }
-function modalBrandForm(m) {
-  const item = m.item, isNew = !item.id;
-  return `<div class="modal-bg" data-act="close-modal"><div class="modal" data-stop>
-    <h3>${isNew ? "Nytt godkjent merke" : "Rediger merke"}</h3>
-    <div class="field"><label>Navn</label><input data-f="name" value="${esc(item.name ?? "")}" placeholder="f.eks. Adams" /></div>
-    <div class="field"><label>Foretrukket innen</label><select data-f="category">${BRAND_CATS.map((c) => `<option ${item.category === c ? "selected" : ""}>${c}</option>`).join("")}</select></div>
-    <div class="field"><label>Notat</label><input data-f="notes" value="${esc(item.notes ?? "")}" placeholder="hva merket er bra på" /></div>
-    <div class="actions">${!isNew ? `<button class="btn danger" data-act="del-brand">Slett</button>` : ""}<span class="spacer"></span>
-      <button class="btn ghost" data-act="close-modal">Avbryt</button><button class="btn" data-act="save-brand">Lagre</button></div>
-  </div></div>`;
-}
-function modalOptionForm(m) {
-  const item = m.item, isNew = !item.id;
-  const txt = (label, key, type = "text") => `<div class="field"><label>${label}</label><input data-f="${key}" type="${type}" value="${esc(item[key] ?? "")}" ${key === "brand" ? 'list="brandlist"' : ""} /></div>`;
-  return `<div class="modal-bg" data-act="close-modal"><div class="modal" data-stop>
-    <h3>${isNew ? "Nytt alternativ" : "Rediger alternativ"}</h3>
-    <datalist id="brandlist">${state.brands.map((b) => `<option value="${esc(b.name)}">`).join("")}</datalist>
-    ${txt("Produsent / merke", "brand")}${txt("Modell", "model")}${txt("Størrelse", "size")}
-    ${txt("Annen info", "info")}${txt("Link til produkt", "link")}${txt("Pris (kr)", "price", "number")}
-    <div class="actions">${!isNew ? `<button class="btn danger" data-act="del-opt">Slett</button>` : ""}<span class="spacer"></span>
-      <button class="btn ghost" data-act="close-modal">Avbryt</button><button class="btn" data-act="save-opt">Lagre</button></div>
-  </div></div>`;
-}
-function modalChooseList(m) {
+function sheetChooseList(m) {
   const o = optionById(m.optionId); const active = state.lists.filter((l) => !l.archived_at);
-  return `<div class="modal-bg" data-act="close-modal"><div class="modal" data-stop>
-    <h3>Legg «${esc(optionName(o))}» i liste</h3>
+  const body = `<div class="fset">
     ${active.length ? `<div class="picklist">${active.map((l) => `<label data-choose-list="${l.id}"><span style="flex:1">${esc(l.name)}</span><span class="price">${fmt(listSum(l))}</span></label>`).join("")}</div>`
       : `<p style="color:var(--muted)">Du har ingen lister ennå.</p>`}
-    <div class="actions"><button class="btn ghost sm" data-act="add-list">+ Ny liste</button><span class="spacer"></span><button class="btn ghost" data-act="close-modal">Lukk</button></div>
+  </div>`;
+  return `<div class="sheet-bg" data-act="close-modal"><div class="sheet" data-stop>
+    <div class="grab"></div>
+    <div class="shead"><div class="t"><h3>Legg i liste</h3><div class="sub">${esc(optionName(o))}</div></div><button class="x" data-act="close-modal">✕</button></div>
+    <div class="sbody">${body}</div>
+    <div class="sfoot"><button class="btn ghost sm" data-act="add-list">+ Ny liste</button><span class="spacer"></span>
+      <button class="btn ghost" data-act="close-modal">Lukk</button></div>
   </div></div>`;
 }
 
-// ── Docket AI-chat ──
-function renderDock() {
+// ── Bunn: AI-bar + fanelinje (chat-panel erstatter begge når åpen) ────
+function renderBottom() {
   const open = state.chatOpen;
   return `
-    <div class="dock ${open ? "open" : ""}" id="dock">
+    <div class="bottom ${open ? "open" : ""}" id="dock"><div class="inner">
       <div class="dock-bar" data-act="open-chat">
-        ${logo(26, "red")}
-        <span class="ph">Spør assistenten – «legg til en Sabian-cymbal i god stand» …</span>
-        <span class="pill">AI</span>
+        ${logo(22, "red")}
+        <span class="ph">Spør eller endre …</span>
+        <span class="ai">AI</span>
       </div>
+      <nav class="tabbar">
+        ${TABS.map(([k, l]) => `<button class="${state.tab === k ? "active" : ""}" data-tab="${k}">${l}<span class="u"></span></button>`).join("")}
+      </nav>
       <div class="dock-panel" id="dockPanel">
         <div class="dock-head">${logo(26, "red")}
           <div><div class="t">Assistent</div><div class="sub">Legger til / endrer for deg</div></div>
@@ -935,29 +1039,39 @@ function renderDock() {
         </div>
         <div class="chat-input"><input id="chatInput" placeholder="Skriv en melding…" ${state.chatBusy ? "disabled" : ""} /><button class="btn" data-act="send-chat">Send</button></div>
       </div>
-    </div>
+    </div></div>
     <div class="dock-scrim ${open ? "show" : ""}" data-act="close-chat"></div>`;
 }
 
-// ── Event wiring ──
+// ── Event wiring ─────────────────────────────────────────────────────
 function wire() {
   const q = (sel) => root.querySelectorAll(sel);
-  q("[data-tab]").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.modal = null; state.openFilter = null; render(); });
+  q("[data-tab]").forEach((b) => b.onclick = () => {
+    state.tab = b.dataset.tab; state.modal = null; state.q = ""; state.searchFocus = false;
+    state.retiredView = false; state.listArchive = false; render();
+  });
   q("[data-ov]").forEach((s) => s.onchange = () => { state["ovMin" + s.dataset.ov[0].toUpperCase() + s.dataset.ov.slice(1)] = s.value; render(); });
 
+  // Søk (behold fokus og markør etter re-render)
+  const si = root.querySelector("#searchInput");
+  if (si) {
+    si.oninput = () => { state.q = si.value; state.searchFocus = true; render(); };
+    si.onblur = () => { state.searchFocus = false; };
+    if (state.searchFocus) { si.focus(); si.setSelectionRange(si.value.length, si.value.length); }
+  }
+
   // Filtre
-  q("[data-filter]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); state.openFilter = state.openFilter === b.dataset.filter ? null : b.dataset.filter; render(); });
-  q("[data-facet]").forEach((cb) => cb.onchange = () => {
-    const [key, val] = splitFirst(cb.dataset.facet); const arr = state.filters[key];
+  q("[data-facet]").forEach((el) => el.onclick = () => {
+    const [key, val] = splitFirst(el.dataset.facet); const arr = state.filters[key];
     const i = arr.indexOf(val); if (i >= 0) arr.splice(i, 1); else arr.push(val); render();
   });
-  q("[data-clearfacet]").forEach((b) => b.onclick = () => { state.filters[b.dataset.clearfacet] = []; render(); });
-  // Statistikk-kortene fungerer som hurtigfiltre (toggle).
+  q("[data-rmfilter]").forEach((el) => el.onclick = () => {
+    const [key, val] = splitFirst(el.dataset.rmfilter);
+    state.filters[key] = state.filters[key].filter((x) => x !== val); render();
+  });
   q("[data-stat]").forEach((el) => el.onclick = () => {
-    const v = el.dataset.stat;
-    if (v === "all") { state.filters = { category: [], status: [], quality: [], brand: [] }; }
-    else { const [facet, val] = splitFirst(v.replace(":", "|")); state.filters[facet] = statActive(facet, val) ? [] : [val]; }
-    render();
+    const [facet, val] = splitFirst(el.dataset.stat.replace(":", "|"));
+    state.filters[facet] = statActive(facet, val) ? [] : [val]; render();
   });
 
   q("[data-edit-inv]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); openModal({ kind: "edit-inv", item: { ...inv(el.dataset.editInv) } }); });
@@ -965,7 +1079,7 @@ function wire() {
   q("[data-togglegroup]").forEach((el) => el.onclick = () => { const k = decodeURIComponent(el.dataset.togglegroup); state.expandedGroups[k] = !state.expandedGroups[k]; render(); });
   q("[data-togglenode]").forEach((el) => el.onclick = (e) => { if (e.target.closest("[data-edit-inv],[data-add-child],[data-goto-wish]")) return; const id = el.dataset.togglenode; state.expandedNodes[id] = !state.expandedNodes[id]; render(); });
   q("[data-add-child]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const par = inv(el.dataset.addChild); openModal({ kind: "add-inv", item: { type: "", brand: "", model: "", size: "", category: par ? par.category : "Trommer", status: "ok", quality: "ukjent", notes: "", parent_id: el.dataset.addChild } }); });
-  q("[data-togglewish]").forEach((el) => el.onclick = (e) => { if (e.target.closest("[data-edit-wish],[data-goto-inv]")) return; state.expandedWish[el.dataset.togglewish] = !state.expandedWish[el.dataset.togglewish]; render(); });
+  q("[data-togglewish]").forEach((el) => el.onclick = (e) => { if (e.target.closest("[data-edit-wish],[data-goto-inv],[data-goto-list]")) return; state.expandedWish[el.dataset.togglewish] = !state.expandedWish[el.dataset.togglewish]; render(); });
 
   // Alternativer (options)
   q("[data-addopt]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); openModal({ kind: "option-form", wishId: el.dataset.addopt, item: { brand: "", model: "", size: "", info: "", link: "", price: "" } }); });
@@ -973,9 +1087,9 @@ function wire() {
   q("[data-priceopt]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [oid, link] = splitFirst(el.dataset.priceopt); fetchPriceUrl(link, (p) => api(`/options/${oid}`, { method: "PUT", body: JSON.stringify({ price: p }) })); });
   q("[data-addtolist]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); openModal({ kind: "choose-list", optionId: el.dataset.addtolist }); });
 
-  q("[data-goto-wish]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); state.tab = "mangler"; render(); });
-  q("[data-goto-inv]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); state.tab = "oversikt"; render(); });
-  q("[data-goto-list]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); state.tab = "lister"; render(); });
+  q("[data-goto-wish]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); state.tab = "mangler"; state.q = ""; render(); });
+  q("[data-goto-inv]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); state.tab = "oversikt"; state.q = ""; render(); });
+  q("[data-goto-list]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); state.tab = "lister"; state.q = ""; render(); });
 
   // Lister
   q("[data-edit-list]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); openModal({ kind: "list-form", item: { ...byId(state.lists, el.dataset.editList) } }); });
@@ -983,7 +1097,7 @@ function wire() {
   q("[data-export-toggle]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const id = el.dataset.exportToggle; state.exportMenu = state.exportMenu === id ? null : id; render(); });
   q("[data-export-xlsx]").forEach((el) => el.onclick = () => { state.exportMenu = null; exportListExcel(byId(state.lists, el.dataset.exportXlsx)); render(); });
   q("[data-export-print]").forEach((el) => el.onclick = () => { const l = byId(state.lists, el.dataset.exportPrint); state.exportMenu = null; render(); setTimeout(() => printList(l), 30); });
-  q("[data-del-list]").forEach((el) => el.onclick = () => { if (confirm("Slette listen?")) deleteList(el.dataset.delList); });
+  q("[data-del-list]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); if (confirm("Slette listen?")) deleteList(el.dataset.delList); });
   q("[data-rmitem]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [lid, oid] = splitFirst(el.dataset.rmitem); toggleListItem(lid, oid, false); });
   // Oppfyllelse / arkiv
   q("[data-buyopt]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const [wid, oid] = splitFirst(el.dataset.buyopt); fulfillWish(wid, oid); });
@@ -992,12 +1106,31 @@ function wire() {
   q("[data-unretire]").forEach((el) => el.onclick = () => setRetired(el.dataset.unretire, false));
   q("[data-del-inv]").forEach((el) => el.onclick = () => { if (confirm("Slette utgått utstyr permanent?")) deleteInventory(el.dataset.delInv); });
   q("[data-unarchive]").forEach((el) => el.onclick = () => setArchived(el.dataset.unarchive, false));
-  q("[data-li-edit]").forEach((el) => el.onclick = (e) => { if (!el.dataset.liEdit || e.target.closest("[data-rmitem],a,[data-stoplink]")) return; openModal({ kind: "edit-wish", item: { ...wish(el.dataset.liEdit) } }); });
+  q("[data-li-edit]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); if (!el.dataset.liEdit) return; openModal({ kind: "edit-wish", item: { ...wish(el.dataset.liEdit) } }); });
   q("[data-toggleitem]").forEach((cb) => cb.onchange = () => { const [lid, oid] = splitFirst(cb.dataset.toggleitem); toggleListItem(lid, oid, cb.checked); });
   q("[data-choose-list]").forEach((el) => el.onclick = () => addToListChosen(el.dataset.chooseList, state.modal.optionId));
+  q("[data-stoplink]").forEach((el) => el.onclick = (e) => e.stopPropagation());
 
   // Merker
   q("[data-edit-brand]").forEach((el) => el.onclick = () => openModal({ kind: "brand-form", item: { ...byId(state.brands, el.dataset.editBrand) } }));
+
+  // Ark: segmenterte valg, chips og brytere (behold det som er skrevet i feltene)
+  q("[data-seg]").forEach((el) => el.onclick = (e) => {
+    e.preventDefault();
+    const [key, val] = splitFirst(el.dataset.seg);
+    state.modal.item = { ...state.modal.item, ...readFields(), [key]: val };
+    render();
+  });
+  q("[data-switch]").forEach((el) => el.onclick = () => {
+    const key = el.dataset.switch;
+    const item = { ...state.modal.item, ...readFields() };
+    if (key === "replaces_inventory_id") {
+      const first = state.inventory.find((i) => i.quality === "dårlig" || i.status !== "ok");
+      item.replaces_inventory_id = item.replaces_inventory_id ? "" : (first ? first.id : "");
+      if (!item.replaces_inventory_id && !first) return toast("Ingen utstyr i dårlig stand å erstatte");
+    }
+    state.modal.item = item; render();
+  });
 
   const chatInput = root.querySelector("#chatInput");
   if (chatInput && state.chatOpen) { chatInput.onkeydown = (e) => { if (e.key === "Enter") sendChat(chatInput.value); }; if (!state.chatBusy) chatInput.focus(); const log = root.querySelector("#chatLog"); if (log) log.scrollTop = log.scrollHeight; }
@@ -1016,15 +1149,27 @@ function wire() {
       "toggle-retired": () => { state.retiredView = !state.retiredView; render(); },
       "toggle-archive": () => { state.listArchive = !state.listArchive; render(); },
       "close-export": () => { state.exportMenu = null; render(); },
-      "close-filter": () => { state.openFilter = null; render(); },
       "copy-report": () => { navigator.clipboard.writeText(reportText()); toast("Kopiert"); },
       "print-report": () => window.print(),
       "download-report": () => downloadCSV([[reportText()]], "slagverksoversikt.txt"),
       "open-chat": openChat, "close-chat": closeChat,
       "send-chat": () => sendChat(root.querySelector("#chatInput").value),
+      "wish-price": () => {
+        const data = { ...state.modal.item, ...readFields() };
+        if (!data.link) return toast("Legg inn en lenke først");
+        state.modal.item = data;
+        fetchPriceUrl(data.link, (p) => { state.modal.item = { ...state.modal.item, estimated_price: p }; render(); return Promise.resolve(); });
+      },
+      "opt-price": () => {
+        const data = { ...state.modal.item, ...readFields() };
+        if (!data.link) return toast("Legg inn en lenke først");
+        state.modal.item = data;
+        fetchPriceUrl(data.link, (p) => { state.modal.item = { ...state.modal.item, price: p }; render(); return Promise.resolve(); });
+      },
+      "del-list-sheet": () => { if (confirm("Slette listen?")) deleteList(state.modal.item.id); },
     };
     if (A[act]) return A[act]();
-    if (act === "close-modal") { if (e.target.hasAttribute("data-stop")) return; state.modal = null; return render(); }
+    if (act === "close-modal") { if (e.target.hasAttribute("data-stop")) return; state.modal = null; state.filterSheet = false; return render(); }
     if (act === "save" || act === "del") return modalAction(act);
     if (act === "save-list") return modalSaveList();
     if (act === "save-brand") return modalSaveBrand();
@@ -1038,7 +1183,7 @@ function wire() {
 function splitFirst(s) { const i = s.indexOf("|"); return [s.slice(0, i), s.slice(i + 1)]; }
 
 function openModal(m) { state.modal = m; render(); }
-function readFields() { const data = {}; document.querySelectorAll(".modal [data-f]").forEach((el) => { data[el.dataset.f] = el.value; }); return data; }
+function readFields() { const data = {}; document.querySelectorAll(".sheet [data-f]").forEach((el) => { data[el.dataset.f] = el.value; }); return data; }
 function modalAction(act) {
   const m = state.modal; if (!m) return;
   const data = { ...m.item, ...readFields() };
@@ -1092,17 +1237,15 @@ function initGlobalListeners() {
 }
 
 // ── Sveip mellom faner (mobil) ──
-// touch-action: pan-y (CSS) lar nettleser scrolle vertikalt; vi fanger horisontalt.
-// Retnings-lås + høy terskel (~25% bredde) hindrer utløsning ved uhell.
 function initSwipeNav() {
   const TAB_KEYS = TABS.map((t) => t[0]);
   let sx = 0, sy = 0, dx = 0, dy = 0, active = false, locked = false, mainEl = null, fromIdx = 0;
   const LOCK = 12;
 
   const blocked = (t) =>
-    !state.code || state.chatOpen || state.modal || state.filterSheet || state.openFilter ||
+    !state.code || state.chatOpen || state.modal || state.filterSheet ||
     window.innerWidth > 720 ||
-    (t.closest && t.closest("nav.tabs, #dock, .dock-scrim, .modal-bg, .filter-pop, select, input, textarea, a, button, [data-stop]"));
+    (t.closest && t.closest("nav.tabbar, #dock, .dock-scrim, .sheet-bg, select, input, textarea, a, button, [data-stop]"));
 
   const resetMain = (anim) => {
     if (!mainEl) return;
@@ -1122,10 +1265,9 @@ function initSwipeNav() {
     dx = e.touches[0].clientX - sx; dy = e.touches[0].clientY - sy;
     if (!locked) {
       if (Math.abs(dx) < LOCK && Math.abs(dy) < LOCK) return;
-      if (Math.abs(dy) >= Math.abs(dx)) { active = false; return; } // vertikalt → la scroll skje
+      if (Math.abs(dy) >= Math.abs(dx)) { active = false; return; }
       locked = true;
     }
-    // Demp ved endene (ingen fane å gå til)
     const atEnd = (dx < 0 && fromIdx >= TAB_KEYS.length - 1) || (dx > 0 && fromIdx <= 0);
     const d = atEnd ? dx * 0.3 : dx;
     mainEl.style.transition = "none";
@@ -1137,17 +1279,15 @@ function initSwipeNav() {
     if (!active) return; active = false;
     if (!locked || !mainEl) return;
     const threshold = Math.max(80, window.innerWidth * 0.25);
-    const dir = dx < 0 ? 1 : -1;                  // 1 = neste, -1 = forrige
+    const dir = dx < 0 ? 1 : -1;
     const target = fromIdx + dir;
     if (Math.abs(dx) >= threshold && target >= 0 && target < TAB_KEYS.length) {
       const W = window.innerWidth;
       mainEl.style.transition = "transform .16s ease, opacity .16s ease";
-      mainEl.style.transform = `translateX(${dir === 1 ? -W : W}px)`;  // sklid gammel ut
+      mainEl.style.transform = `translateX(${dir === 1 ? -W : W}px)`;
       mainEl.style.opacity = "0";
-      const el = mainEl;
       setTimeout(() => {
-        if (root.querySelector("main") === el) { /* uendret */ }
-        state.tab = TAB_KEYS[target]; state.modal = null; state.openFilter = null;
+        state.tab = TAB_KEYS[target]; state.modal = null; state.q = "";
         state.retiredView = false; state.listArchive = false;
         swipeIn = dir; render();
       }, 150);
@@ -1158,8 +1298,6 @@ function initSwipeNav() {
 }
 
 // ── Boot ──
-// Lås til stående der nettleseren tillater det (installert PWA / fullscreen).
-// Kaster/avvises ellers – svelg stille; CSS-rotasjonsvakten er fallback.
 try { screen.orientation && screen.orientation.lock && screen.orientation.lock("portrait").catch(() => {}); } catch { /* ikke støttet */ }
 initGlobalListeners();
 initSwipeNav();

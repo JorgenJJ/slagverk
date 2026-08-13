@@ -12,6 +12,7 @@ på ett sted – tilgjengelig fra mobil og PC.
 | [arkitektur.md](arkitektur.md) | Komponenter, request-flyt og distribusjon (Cloudflare Workers) |
 | [datamodell-og-api.md](datamodell-og-api.md) | D1-skjema og alle API-endepunkter |
 | [konsepter.md](konsepter.md) | Tilgang, PWA/offline, eksport, responsivt UI, AI (v2) |
+| [design.md](design.md) | Palett (lys + mørk fasit), typografi, skjermstruktur, mørk modus |
 
 ## Kjernen på 30 sekunder
 
