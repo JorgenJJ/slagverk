@@ -19,14 +19,16 @@ const QUALITY_RANK = { bra: 4, greit: 3, dårlig: 2, ukjent: 0 };
 // Faner (likeverdige, fyller bredden i bunnlinja). «Generér oversikt» er IKKE en
 // fane, men en header-knapp ved siden av Logg ut (se render()).
 const TABS = [["oversikt", "Oversikt"], ["mangler", "Mangler"], ["lister", "Innkjøp"], ["merker", "Merker"]];
-// Tittel/undertittel i headeren pr. fane.
-const TAB_HEAD = {
-  oversikt: ["Slagverk", "Randaberg Musikkorps"],
-  mangler: ["Mangler", "Ønskede oppgraderinger"],
-  lister: ["Innkjøp", "Innkjøpslister"],
-  merker: ["Merker", "Foretrukne leverandører"],
-  generer: ["Generér oversikt", "PDF til andre korps"],
+// Tittel i headeren pr. fane. Undertittelen er ALLTID korpsnavnet – den er
+// avsenderidentitet, ikke en beskrivelse av fanen.
+const TAB_TITLE = {
+  oversikt: "Slagverk",
+  mangler: "Mangler",
+  lister: "Innkjøp",
+  merker: "Merker",
+  generer: "Generér oversikt",
 };
+const ORG = "Randaberg Musikkorps";
 
 const state = {
   code: localStorage.getItem("slagverk_code") || "",
@@ -139,6 +141,17 @@ const manglerTotal = () => state.wishlist.reduce((a, w) => a + effPrice(w), 0);
 const replacementFor = (invId) => state.wishlist.filter((w) => w.replaces_inventory_id === invId);
 const listsWith = (wishId) => state.lists.filter((l) => (l.items || []).some((it) => it.wishlist_id === wishId));
 const isErstatning = (w) => !!w.replaces_inventory_id;
+// Et merke kan være foretrukket innen flere kategorier. Kanonisk form fra API-et er
+// JSON-arrayen `categories`; `category` er speil av den første (eldre rader har bare
+// den). Speiler brandCategories() i src/db.js – hold dem i synk.
+function brandCats(b) {
+  if (!b) return [];
+  if (b.categories) {
+    if (Array.isArray(b.categories)) return b.categories;
+    try { const a = JSON.parse(b.categories); if (Array.isArray(a) && a.length) return a.map(String); } catch { /* faller tilbake */ }
+  }
+  return b.category ? [b.category] : [];
+}
 // ── Inventar-tre (komponent → deler) ──
 const invChildren = (id) => state.inventory.filter((i) => i.parent_id === id && !i.retired_at).sort((a, b) => (a.category + a.type).localeCompare(b.category + b.type));
 const invRoots = () => state.inventory.filter((i) => (!i.parent_id || !inv(i.parent_id)) && !i.retired_at)
@@ -362,11 +375,11 @@ function render() {
   const scrollY = window.scrollY;
   const tabChanged = prevTab !== state.tab;
   prevTab = state.tab;
-  const [title, sub] = TAB_HEAD[state.tab] || TAB_HEAD.oversikt;
+  const title = TAB_TITLE[state.tab] || TAB_TITLE.oversikt;
   root.innerHTML = `
     <header><div class="appbar">
       ${logo(32, "red")}
-      <div class="titles"><h1>${esc(title)}</h1><small>${esc(sub)}</small></div>
+      <div class="titles"><h1>${esc(title)}</h1><small>${esc(ORG)}</small></div>
       <div class="hactions">
         <button class="hbtn ${state.tab === "generer" ? "active" : ""}" data-tab="generer" title="Generér oversikt (PDF til andre korps)" aria-label="Generér oversikt">${ICON_DOC}</button>
         <button class="hbtn" data-act="logout" title="Logg ut" aria-label="Logg ut">${ICON_OUT}</button>
@@ -464,7 +477,7 @@ function renderFilterSheet() {
     <div class="chips">${opts.map((o) => `<span class="chip ${state.filters[key].includes(o.val) ? "on" : ""}" data-facet="${key}|${esc(o.val)}">${esc(o.label)}</span>`).join("")}</div></div>`;
   return `<div class="sheet-bg" data-act="close-filtersheet"><div class="sheet" data-stop>
     <div class="grab"></div>
-    <div class="shead"><div class="t"><h3>Filtre</h3><div class="sub">${activeFilterCount()} aktive</div></div>
+    <div class="shead"><div class="t"><h3>Filtre</h3><div class="sub" data-filtercount>${activeFilterCount()} aktive</div></div>
       <button class="x" data-act="close-filtersheet">✕</button></div>
     <div class="sbody">
       ${group("category", "Kategori", CATEGORIES.map((c) => ({ val: c, label: c })))}
@@ -756,16 +769,19 @@ function viewListArchive(archived) {
 
 // ── Merker ───────────────────────────────────────────────────────────
 function viewMerker() {
-  const brands = state.brands.filter((b) => hit(b.name, b.notes, b.category));
-  const cats = [...new Set(brands.map((b) => b.category))];
+  const brands = state.brands.filter((b) => hit(b.name, b.notes, ...brandCats(b)));
+  // Et merke som er foretrukket innen flere kategorier står under hver av dem.
+  const cats = [...new Set(brands.flatMap(brandCats))];
   const order = BRAND_CATS.filter((c) => cats.includes(c)).concat(cats.filter((c) => !BRAND_CATS.includes(c)));
   const body = order.map((cat) => {
-    const list = brands.filter((b) => b.category === cat);
+    const list = brands.filter((b) => brandCats(b).includes(cat));
     return `<div class="sec"><span class="t">${esc(cat)}</span><span class="colhead">${list.length}</span></div>
-      ${list.map((b) => `<div class="brow" data-edit-brand="${b.id}">
-        <div class="n"><b>${esc(b.name)}</b><span>${esc(b.notes) || "Foretrukket innen " + esc(cat).toLowerCase()}</span></div>
+      ${list.map((b) => { const other = brandCats(b).filter((c) => c !== cat);
+        const note = esc(b.notes) || "Foretrukket innen " + esc(cat).toLowerCase();
+        return `<div class="brow" data-edit-brand="${b.id}">
+        <div class="n"><b>${esc(b.name)}</b><span>${note}${other.length ? ` · også ${esc(other.join(", ").toLowerCase())}` : ""}</span></div>
         <span class="chev">›</span>
-      </div>`).join("")}`;
+      </div>`; }).join("")}`;
   }).join("");
   return `
     ${searchBar("Søk merke", `<div class="add" data-act="add-brand">+ Nytt</div>`)}
@@ -919,10 +935,14 @@ function sheetWish(m) {
     </div>
     <div class="fset">
       <div class="switch" style="margin-bottom:12px">
-        <div class="m"><b>Erstatter eksisterende utstyr</b><span>${repl ? "På — velg hva som byttes ut" : "Av — dette er en vanlig mangel"}</span></div>
+        <div class="m"><b>Erstatter eksisterende utstyr</b><span class="swnote">${repl ? "På — velg hva som byttes ut" : "Av — dette er en vanlig mangel"}</span></div>
         <div class="sw ${repl ? "on" : ""}" data-switch="replaces_inventory_id"><i></i></div>
       </div>
-      ${repl ? fSel("Erstatter", "replaces_inventory_id", item, invReplaceOpts.map((i) => [i.id, `${i.type} (${i.quality}/${STATUS_LABEL[i.status]})`])) : ""}
+      <!-- Alltid rendret, bare skjult når bryteren er av: da slipper bryteren å
+           bygge om arket, og readFields() hopper over skjulte felter. -->
+      <div data-switchbox="replaces_inventory_id" ${repl ? "" : "hidden"}>
+        ${fSel("Erstatter", "replaces_inventory_id", item, invReplaceOpts.map((i) => [i.id, `${i.type} (${i.quality}/${STATUS_LABEL[i.status]})`]))}
+      </div>
       ${fArea("Merknader", "notes", item, "valgfritt")}
     </div>`;
   return sheet({
@@ -955,13 +975,14 @@ function sheetOptionForm(m) {
 }
 function sheetBrandForm(m) {
   const item = m.item, isNew = !item.id;
+  const cats = new Set(item.categories || []);
   const usedInv = item.name ? state.inventory.filter((i) => (i.brand || "") === item.name).length : 0;
   const usedOpt = item.name ? state.wishlist.reduce((a, w) => a + (w.options || []).filter((o) => (o.brand || "") === item.name).length, 0) : 0;
   const body = `
     <div class="fset">
       <div class="field"><label>Navn</label><input data-f="name" value="${esc(item.name ?? "")}" placeholder="f.eks. Adams" style="font-family:var(--font-display);font-size:17px;font-weight:600" /></div>
-      <div class="field"><label>Foretrukket innen</label>
-        <div class="chips">${BRAND_CATS.map((c) => `<span class="chip ${item.category === c ? "on" : ""}" data-seg="category|${esc(c)}">${esc(c)}</span>`).join("")}</div>
+      <div class="field"><label>Foretrukket innen <span style="font-weight:400;color:var(--faint)">– velg én eller flere</span></label>
+        <div class="chips">${BRAND_CATS.map((c) => `<span class="chip ${cats.has(c) ? "on" : ""}" data-catchip="${esc(c)}">${esc(c)}</span>`).join("")}</div>
       </div>
       ${fArea("Notat", "notes", item, "hva merket er bra på")}
       ${!isNew ? `<div class="hint"><div class="leg">I bruk</div><div class="v">${usedInv} enhet${usedInv === 1 ? "" : "er"} i inventaret · ${usedOpt} alternativ${usedOpt === 1 ? "" : "er"} i Mangler</div></div>` : ""}
@@ -1060,10 +1081,15 @@ function wire() {
     if (state.searchFocus) { si.focus(); si.setSelectionRange(si.value.length, si.value.length); }
   }
 
-  // Filtre
+  // Filtre. Chips i filterarket oppdaterer seg selv og tellern – lista bak
+  // tegnes på nytt når arket lukkes, ikke for hvert kryss (samme grunn som i
+  // skjema-arkene: unngå at flaten hopper mens du velger).
   q("[data-facet]").forEach((el) => el.onclick = () => {
     const [key, val] = splitFirst(el.dataset.facet); const arr = state.filters[key];
-    const i = arr.indexOf(val); if (i >= 0) arr.splice(i, 1); else arr.push(val); render();
+    const i = arr.indexOf(val); if (i >= 0) arr.splice(i, 1); else arr.push(val);
+    el.classList.toggle("on", i < 0);
+    const c = root.querySelector("[data-filtercount]");
+    if (c) c.textContent = `${activeFilterCount()} aktive`;
   });
   q("[data-rmfilter]").forEach((el) => el.onclick = () => {
     const [key, val] = splitFirst(el.dataset.rmfilter);
@@ -1112,24 +1138,42 @@ function wire() {
   q("[data-stoplink]").forEach((el) => el.onclick = (e) => e.stopPropagation());
 
   // Merker
-  q("[data-edit-brand]").forEach((el) => el.onclick = () => openModal({ kind: "brand-form", item: { ...byId(state.brands, el.dataset.editBrand) } }));
+  q("[data-edit-brand]").forEach((el) => el.onclick = () => {
+    const b = byId(state.brands, el.dataset.editBrand);
+    openModal({ kind: "brand-form", item: { ...b, categories: brandCats(b) } });
+  });
 
-  // Ark: segmenterte valg, chips og brytere (behold det som er skrevet i feltene)
+  // ── Kontroller inne i et ark ──────────────────────────────────────
+  // Disse kaller BEVISST ikke render(). Et fullt rebygg av #root ville nullstille
+  // markør, fokus, IME-komposisjon og scroll midt i utfyllingen. De endrer i stedet
+  // bare sin egen klasse + `state.modal.item`; tekstfeltene beholder sine egne
+  // DOM-verdier og plukkes opp av readFields() når du lagrer.
   q("[data-seg]").forEach((el) => el.onclick = (e) => {
     e.preventDefault();
     const [key, val] = splitFirst(el.dataset.seg);
-    state.modal.item = { ...state.modal.item, ...readFields(), [key]: val };
-    render();
+    state.modal.item[key] = val;
+    el.parentElement.querySelectorAll("[data-seg]").forEach((b) => b.classList.toggle("on", b === el));
+  });
+  // Merke-kategorier: flervalg. Minst én må stå igjen.
+  q("[data-catchip]").forEach((el) => el.onclick = () => {
+    const c = el.dataset.catchip;
+    const cur = new Set(state.modal.item.categories || []);
+    if (cur.has(c)) { if (cur.size === 1) return toast("Merket må ha minst én kategori"); cur.delete(c); }
+    else cur.add(c);
+    state.modal.item.categories = BRAND_CATS.filter((x) => cur.has(x));
+    el.classList.toggle("on", cur.has(c));
   });
   q("[data-switch]").forEach((el) => el.onclick = () => {
     const key = el.dataset.switch;
-    const item = { ...state.modal.item, ...readFields() };
-    if (key === "replaces_inventory_id") {
-      const first = state.inventory.find((i) => i.quality === "dårlig" || i.status !== "ok");
-      item.replaces_inventory_id = item.replaces_inventory_id ? "" : (first ? first.id : "");
-      if (!item.replaces_inventory_id && !first) return toast("Ingen utstyr i dårlig stand å erstatte");
-    }
-    state.modal.item = item; render();
+    const box = root.querySelector(`[data-switchbox="${key}"]`);
+    const sel = box && box.querySelector("select");
+    const on = !el.classList.contains("on");
+    if (on && sel && !sel.options.length) return toast("Ingen utstyr i dårlig stand å erstatte");
+    el.classList.toggle("on", on);
+    if (box) box.hidden = !on;                       // skjulte felter leses ikke av readFields()
+    state.modal.item[key] = on && sel ? sel.value : "";
+    const note = el.closest(".switch").querySelector(".swnote");
+    if (note) note.textContent = on ? "På — velg hva som byttes ut" : "Av — dette er en vanlig mangel";
   });
 
   const chatInput = root.querySelector("#chatInput");
@@ -1142,7 +1186,7 @@ function wire() {
       "add-inv": () => openModal({ kind: "add-inv", item: { type: "", brand: "", model: "", size: "", category: "Trommer", status: "ok", quality: "ukjent", notes: "", parent_id: "" } }),
       "add-wish": () => openModal({ kind: "add-wish", item: { type: "", category: "Trommer", priority: "middels", estimated_price: "", link: "", notes: "", replaces_inventory_id: "" } }),
       "add-list": () => openModal({ kind: "list-form", item: { name: "", budget: "", notes: "" } }),
-      "add-brand": () => openModal({ kind: "brand-form", item: { name: "", category: "Generelt", notes: "" } }),
+      "add-brand": () => openModal({ kind: "brand-form", item: { name: "", categories: ["Generelt"], notes: "" } }),
       "open-filtersheet": () => { state.filterSheet = true; render(); },
       "close-filtersheet": () => { state.filterSheet = false; render(); },
       "clear-filters": () => { state.filters = { category: [], status: [], quality: [], brand: [] }; render(); },
@@ -1154,18 +1198,11 @@ function wire() {
       "download-report": () => downloadCSV([[reportText()]], "slagverksoversikt.txt"),
       "open-chat": openChat, "close-chat": closeChat,
       "send-chat": () => sendChat(root.querySelector("#chatInput").value),
-      "wish-price": () => {
-        const data = { ...state.modal.item, ...readFields() };
-        if (!data.link) return toast("Legg inn en lenke først");
-        state.modal.item = data;
-        fetchPriceUrl(data.link, (p) => { state.modal.item = { ...state.modal.item, estimated_price: p }; render(); return Promise.resolve(); });
-      },
-      "opt-price": () => {
-        const data = { ...state.modal.item, ...readFields() };
-        if (!data.link) return toast("Legg inn en lenke først");
-        state.modal.item = data;
-        fetchPriceUrl(data.link, (p) => { state.modal.item = { ...state.modal.item, price: p }; render(); return Promise.resolve(); });
-      },
+      // Prisinnhenting ender i loadAll() → render(), så arket bygges om uansett.
+      // Løs det ved å fryse alt som er skrevet inn i `item` FØR rebygget, slik at
+      // det tegnes tilbake sammen med den hentede prisen.
+      "wish-price": () => sheetFetchPrice("estimated_price"),
+      "opt-price": () => sheetFetchPrice("price"),
       "del-list-sheet": () => { if (confirm("Slette listen?")) deleteList(state.modal.item.id); },
     };
     if (A[act]) return A[act]();
@@ -1183,7 +1220,23 @@ function wire() {
 function splitFirst(s) { const i = s.indexOf("|"); return [s.slice(0, i), s.slice(i + 1)]; }
 
 function openModal(m) { state.modal = m; render(); }
-function readFields() { const data = {}; document.querySelectorAll(".sheet [data-f]").forEach((el) => { data[el.dataset.f] = el.value; }); return data; }
+// Hent pris fra lenkefeltet i det åpne arket og skriv den i `priceKey`.
+function sheetFetchPrice(priceKey) {
+  const data = { ...state.modal.item, ...readFields() };
+  if (!data.link) return toast("Legg inn en lenke først");
+  state.modal.item = data;
+  return fetchPriceUrl(data.link, (p) => { state.modal.item = { ...state.modal.item, [priceKey]: p }; return Promise.resolve(); });
+}
+// Leser feltene i det åpne arket. Skjulte felter (f.eks. «Erstatter» når bryteren
+// er av) hoppes over – de skal ikke overstyre verdien handleren allerede satte.
+function readFields() {
+  const data = {};
+  document.querySelectorAll(".sheet [data-f]").forEach((el) => {
+    if (el.closest("[hidden]")) return;
+    data[el.dataset.f] = el.value;
+  });
+  return data;
+}
 function modalAction(act) {
   const m = state.modal; if (!m) return;
   const data = { ...m.item, ...readFields() };
@@ -1201,6 +1254,9 @@ function modalSaveList() {
 function modalSaveBrand() {
   const data = { ...state.modal.item, ...readFields() };
   if (!data.name) return toast("Navn er påkrevd");
+  // Send hele settet – API-et erstatter kategoriene, det slår dem ikke sammen.
+  const cats = BRAND_CATS.filter((c) => (data.categories || []).includes(c));
+  data.categories = cats.length ? cats : ["Generelt"];
   return saveBrand(data, !data.id);
 }
 function modalSaveOption() {

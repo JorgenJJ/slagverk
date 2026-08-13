@@ -79,9 +79,16 @@ høyeste). `effPrice` (laveste alternativ, ellers `estimated_price`) brukes i su
 |---|---|---|---|
 | `id` | TEXT | – | `BR-<uuid>` |
 | `name` | TEXT | – | **påkrevd** |
-| `category` | TEXT | `Generelt` | hva merket er foretrukket innen (gruppering) |
+| `category` | TEXT | `Generelt` | **speil av første kategori** – for eldre rader, sortering og AI-enum |
+| `categories` | TEXT | – | **kanonisk:** JSON-array, f.eks. `["Trommer","Melodisk"]` |
 | `notes` | TEXT | `''` | |
 | `sort_order` | INTEGER | `0` | |
+
+Et merke kan være foretrukket innen **flere** kategorier og vises da under hver av
+dem i Merker-fanen. Les alltid settet med `brandCategories(row)` fra `src/db.js` –
+aldri `row.category` direkte. Ved skriving godtar `createBrand`/`updateBrand` enten
+`categories` (array eller JSON-streng) eller `category` (én verdi); begge kolonnene
+settes som par. `categories` **erstatter** hele settet, det slås ikke sammen.
 
 **Koblinger oppsummert:** `list_items` binder innkjøpsliste ↔ mangel;
 `wishlist.replaces_inventory_id` binder mangel ↔ utstyr-den-erstatter. Referansene

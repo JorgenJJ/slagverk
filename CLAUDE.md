@@ -49,6 +49,10 @@ wrangler.toml         Worker + [assets]=public/ + D1-binding DB
   - status: `ok | redusert | ødelagt`
   - kvalitet: `bra | greit | dårlig | ukjent`
   - prioritet: `høy | middels | lav`
+  - merke-kategori: `Generelt` + de sju over. Et merke kan ha **flere** – lagres som
+    JSON-array i `brands.categories` (`category` speiler den første). Les alltid via
+    `brandCategories()` i `db.js` / `brandCats()` i `app.js`; skriv aldri `category`
+    alene.
 
 ## ID-er
 
@@ -88,9 +92,24 @@ i UI). Full tabell-spec: [docs/datamodell-og-api.md](docs/datamodell-og-api.md).
 
 - Arkitektur: ett globalt `state`-objekt + `render()` som bygger hele `#root` på
   nytt, deretter `wire()` som kobler events via `data-*`-attributter.
+- **`render()` er et fullt rebygg – ikke kall den fra en kontroll brukeren betjener
+  midt i utfylling.** Rebygget nullstiller markør, fokus, IME-komposisjon og scroll.
+  Regel:
+  - Endrer kontrollen **bare seg selv** (segmentert valg, chip, bryter)? Sett verdien
+    i `state.modal.item` og bytt klassen på elementet direkte. **Ingen `render()`.**
+    Se `[data-seg]`, `[data-catchip]`, `[data-switch]`, `[data-facet]` i `wire()`.
+  - Trenger et felt å dukke opp/forsvinne? Render det **alltid**, og skjul med
+    `hidden`. `readFields()` hopper over alt inne i `[hidden]`, så skjulte felter
+    lekker ikke inn i lagringen.
+  - Må innholdet faktisk endres (søk, filter anvendt, data lastet)? Da er `render()`
+    riktig – men frys det som er skrevet inn i `state.modal.item` **før** rebygget
+    (`{ ...item, ...readFields() }`), ellers mister brukeren det. Se `sheetFetchPrice()`.
+  - Tekstfelter trenger ingen state: de beholder sine egne DOM-verdier og plukkes opp
+    av `readFields()` når man lagrer.
 - **Escape all brukerdata med `esc()`** i HTML-strenger (XSS).
-- Responsivt: `<table>` på desktop, `.cards` på mobil (≤720px) – render begge,
-  CSS skjuler den som ikke gjelder. `.desktop-only` / `.mobile-only` finnes.
+- Lister er **rader** (`.row`) i seksjoner (`.sec`), samme oppsett på mobil og desktop;
+  over 720px rammes `.panel` inn og sentreres. Ingen `<table>` i app-visningene
+  (rapport og utskrift er unntak).
 - AI-chatten er en **docket bar nederst** (ikke en fane), alltid tilgjengelig;
   håndterer tastatur via `visualViewport` (`applyDockViewport`).
 - Like rader i Oversikt **grupperes** (`groupKey`) med antall + ekspandering.

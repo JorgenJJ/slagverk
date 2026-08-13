@@ -39,6 +39,7 @@ Stikker og klubber: Trommestikke (drumstick; stikke) · Visp (brush; trommebørs
 const str = (d = "") => ({ type: "string", description: d });
 const enm = (vals, d = "") => ({ type: "string", enum: vals, description: d });
 const num = (d = "kroner") => ({ type: "number", description: d });
+const enmList = (vals, d = "") => ({ type: "array", items: { type: "string", enum: vals }, description: d });
 // Referanse til en eksisterende rad: id fra DATA, ELLER bare navn/type (appen slår opp).
 const ref = (what) => str(`${what}: id fra DATA, eller bare navnet/typen – appen finner raden (og spør hvis flere matcher).`);
 
@@ -87,12 +88,12 @@ const TOOLS = [
       list_ref: ref("listen"), option_ref: ref("produktet/alternativet") } } },
 
   // Godkjente merker
-  { name: "add_brand", description: "Legg til et godkjent/foretrukket merke. Eks: «Gretsch er foretrukket innen trommer».",
+  { name: "add_brand", description: "Legg til et godkjent/foretrukket merke. Et merke kan være foretrukket innen FLERE kategorier – bruk da `categories`. Eks: «Gretsch er foretrukket innen trommer», «Majestic er bra på både trommer og melodisk».",
     input_schema: { type: "object", required: ["name"], properties: {
-      name: str(), category: enm(BRANDCAT, "hva merket er foretrukket innen, standard Generelt"), notes: str() } } },
-  { name: "update_brand", description: "Endre et merke (navn/kategori/notat). Eks: «Majestic er foretrukket innen trommer».",
+      name: str(), category: enm(BRANDCAT, "én kategori merket er foretrukket innen, standard Generelt"), categories: enmList(BRANDCAT, "flere kategorier merket er foretrukket innen – bruk denne i stedet for `category` når det er mer enn én"), notes: str() } } },
+  { name: "update_brand", description: "Endre et merke (navn/kategorier/notat). `categories` ERSTATTER hele settet, så ta med de som skal beholdes. Eks: «Majestic er foretrukket innen både trommer og melodisk».",
     input_schema: { type: "object", required: ["ref"], properties: {
-      ref: ref("merket"), name: str("nytt navn"), category: enm(BRANDCAT), notes: str() } } },
+      ref: ref("merket"), name: str("nytt navn"), category: enm(BRANDCAT), categories: enmList(BRANDCAT, "hele det nye settet av kategorier"), notes: str() } } },
   { name: "delete_brand", description: "Slett et godkjent merke.",
     input_schema: { type: "object", required: ["ref"], properties: { ref: ref("merket") } } },
 
@@ -202,9 +203,9 @@ async function runTool(env, name, input) {
 
     // ── Godkjente merker ──
     case "add_brand": { const row = await db.createBrand(env, input);
-      return { summary: `La til merket ${row.name}`, action: { kind: "brand", op: "create", id: row.id, after: row } }; }
+      return { summary: `La til merket ${row.name} (${db.brandCategories(row).join(", ")})`, action: { kind: "brand", op: "create", id: row.id, after: row } }; }
     case "update_brand": { const id = await resolveRef(env, "brand", input.ref); const r = await db.updateBrand(env, id, input);
-      return { summary: `Oppdaterte merket ${r.after.name}`, action: { kind: "brand", op: "update", id, before: r.before, after: r.after } }; }
+      return { summary: `Oppdaterte merket ${r.after.name} (${db.brandCategories(r.after).join(", ")})`, action: { kind: "brand", op: "update", id, before: r.before, after: r.after } }; }
     case "delete_brand": { const id = await resolveRef(env, "brand", input.ref); const r = await db.deleteBrand(env, id);
       return { summary: `Slettet merket ${r.before.name}`, action: { kind: "brand", op: "delete", id, before: r.before } }; }
 
@@ -330,7 +331,8 @@ export async function chat(request, env) {
   const today = new Date().toISOString().slice(0, 10);
   const stores = preferredStores(env);
   const brandsByCat = {};
-  for (const br of brands) (brandsByCat[br.category] ||= []).push(br.name);
+  // Et merke kan stå i flere kategorier – da nevnes det under hver av dem.
+  for (const br of brands) for (const c of db.brandCategories(br)) (brandsByCat[c] ||= []).push(br.name);
   const brandHint = Object.entries(brandsByCat).map(([c, ns]) => `${c}: ${ns.join(", ")}`).join(" · ") || "(ingen registrert)";
   const examples = FEWSHOT.length
     ? "EKSEMPLER (melding → hva du bør gjøre)\n" + FEWSHOT.map((e) => `- «${e.user}» → ${e.action}`).join("\n") + "\n\n"
