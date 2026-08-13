@@ -649,7 +649,10 @@ nav.tabbar button.active .u { background: var(--red); }
   .pad { padding-left: 24px; padding-right: 24px; }
   .grand { margin: 16px 24px; }
   .gen-controls, .report { margin-left: 24px; margin-right: 24px; }
-  .sec { top: 74px; }               /* under den høyere headeren */
+  /* Headeren scroller med (den bor logisk i sidekolonnen på desktop);
+     seksjonslinjene fester seg til toppen av vinduet i stedet. */
+  header { position: static; }
+  .sec { top: 0; }
   .seek .fbtn { display: none; }    /* filtrene bor i sidekolonnen */
 
   /* Bunn (AI-bar): starter etter sidekolonnen, fanelinja er borte */
