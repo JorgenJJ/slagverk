@@ -103,6 +103,19 @@ innhold i bolker (`.fset`), og klebrig fot der Slett ligger til venstre, Avbryt/
 til høyre. Nedtrekk med få faste verdier (tilstand, kvalitet, prioritet) er byttet mot
 segmenterte valg (`.seg`) i samme farger som listene bruker.
 
+### Desktop (≥1024px) – designrunde 5 («Lagerhylle på stor skjerm»)
+
+Samme DOM, CSS bytter layout (`@media (min-width: 1024px)` nederst i `styles.css`):
+
+- **Sidekolonne 236px** (`.side`, renderes alltid, skjult på mobil): logo/tittel,
+  fanene med antall (`.sitem`), filtrene som avkrysningsrader (`.sfilter`, kun
+  Oversikt-fanen – ingen filterark), og nederst Generér oversikt / Eksporter / Logg ut.
+- **Rader blir tabellkolonner**: `.row.deskcols` viser desktop-cellene (`.dcell`)
+  Merke og modell · Merknad · Endret (Oversikt) og Kategori · Alternativer (Mangler);
+  mobil-underteksten (`.sub`) skjules. Kolonnetitlene ligger i seksjonslinja (`.sec.cols`).
+- **Skjemaer blir panel fra høyre** (samme `.sheet`, restylet: full høyde, 400px).
+- Fanelinja i bunnen forsvinner (fanene bor i sida); AI-baren starter etter sidekolonnen.
+
 ## Mørk modus – ikke implementert
 
 Status: **ikke laget.** Kun `2a`/`2b` (Oversikt) finnes i begge varianter; Mangler,
