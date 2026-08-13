@@ -579,3 +579,124 @@ nav.tabbar button.active .u { background: var(--red); }
   .sec:first-child { border-top: none; }
   .row:last-child, .li:last-child, .brow:last-child { border-bottom: none; }
 }
+
+/* ───────────────────────────────────────────────────────────
+   Desktop (≥1024px): sidekolonne med faner + filtre, rader som
+   tabellkolonner, skjemaer som panel fra høyre. Mobil-DOM-en
+   gjenbrukes – CSS bytter layout. Jf. designrunde 5 (docs/design.md).
+   ─────────────────────────────────────────────────────────── */
+
+/* Skjult utenfor desktop */
+.side { display: none; }
+.dcell { display: none; }
+
+@media (min-width: 1024px) {
+  :root { --bottom-h: 52px; }
+
+  .shell { display: grid; grid-template-columns: 236px minmax(0, 1fr); }
+  .content { min-width: 0; }
+
+  /* Sidekolonne */
+  .side {
+    display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    background: #f2ece0; border-right: 1px solid var(--line);
+  }
+  .sbrand { padding: 18px 18px 16px; display: flex; align-items: center; gap: 11px; border-bottom: 1px solid var(--line); }
+  .sbrand .t { font-family: var(--font-display); font-size: 17px; font-weight: 600; color: var(--ink); line-height: 1; }
+  .sbrand .s { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); margin-top: 3px; }
+  .snav { padding: 12px 10px 6px; display: flex; flex-direction: column; gap: 2px; }
+  .sitem {
+    display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 9px;
+    font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; border: 1px solid transparent;
+  }
+  .sitem:hover { background: var(--surface); }
+  .sitem.on { background: var(--surface); border-color: var(--brass-l); font-weight: 700; color: var(--ink); }
+  .sitem .bar { width: 3px; height: 16px; border-radius: 2px; flex: none; }
+  .sitem.on .bar { background: var(--red); }
+  .sitem .sp { flex: 1; }
+  .sitem .n { font-size: 12px; color: var(--faint); }
+  .sfilters { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 6px; }
+  .sgrp { padding: 6px 14px 10px; }
+  .slabel { padding: 4px 4px 6px; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; color: var(--label); }
+  .sfilter {
+    display: flex; align-items: center; gap: 9px; padding: 5px 6px; border-radius: 7px;
+    cursor: pointer; font-size: 13px; color: var(--muted); border: 1px solid transparent;
+  }
+  .sfilter:hover { background: var(--surface); }
+  .sfilter.on { background: var(--red-tint); border-color: var(--red-line); color: var(--red-dark); font-weight: 600; }
+  .sfilter .cb {
+    width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid #cfc3ab; background: var(--surface);
+    display: grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff; flex: none;
+  }
+  .sfilter.on .cb { background: var(--red); border-color: var(--red); }
+  .sfilter .l { flex: 1; }
+  .sfilter .n { font-size: 12px; color: var(--faint); }
+  .sflex { flex: 1; min-height: 12px; }
+  .side .sfoot { padding: 12px 14px 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+  .slink { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; color: var(--muted); padding: 6px 4px; cursor: pointer; border-radius: 7px; }
+  .slink:hover { color: var(--ink); }
+  .slink.on { color: var(--red); }
+
+  /* Innholdskolonna: bredere flate, større tittel, faner/knapper bor i sida */
+  .appbar { max-width: none; padding: 18px 24px 14px; }
+  .appbar .logo { display: none; }
+  .appbar .titles h1 { font-size: 24px; }
+  .hactions { display: none; }
+  main, .bottom .inner { max-width: none; }
+  .summary, .seek { padding-left: 24px; padding-right: 24px; }
+  .panel { margin: 0 24px 16px; }
+  .pad { padding-left: 24px; padding-right: 24px; }
+  .grand { margin: 16px 24px; }
+  .gen-controls, .report { margin-left: 24px; margin-right: 24px; }
+  /* Headeren scroller med (den bor logisk i sidekolonnen på desktop);
+     seksjonslinjene fester seg til toppen av vinduet i stedet. */
+  header { position: static; }
+  .sec { top: 0; }
+  .seek .fbtn { display: none; }    /* filtrene bor i sidekolonnen */
+
+  /* Bunn (AI-bar): starter etter sidekolonnen, fanelinja er borte */
+  .bottom { left: 236px; }
+  nav.tabbar { display: none; }
+  .dock-bar { padding: 13px 24px; border-bottom: none; }
+
+  /* Rader som tabell: Type | Merke og modell | Tilstand | Kvalitet | Merknad | Endret */
+  .dcell { display: block; }
+  .row.deskcols { align-items: center; gap: 14px; }
+  .row.deskcols .sub { display: none; }
+  .row.deskcols .main { flex: 2.2; }
+  .row.deskcols .main .title { font-size: 14.5px; }
+  .row .dcell.bm { flex: 1.4; min-width: 0; font-size: 13.5px; color: var(--muted); }
+  .row .dcell.notes { flex: 1.6; min-width: 0; font-size: 13px; color: var(--faint-2); }
+  .row .dcell.date { width: 64px; flex: none; text-align: right; font-size: 12px; color: var(--label); }
+  .row.deskcols .col-status { width: 96px; justify-content: flex-start; }
+  .row.deskcols .col-quality { width: 78px; flex-direction: row; align-items: center; gap: 7px; }
+  /* Mangler: Mangel | Kategori | Alternativer | Est. pris */
+  .row .dcell.wcat { flex: 1.4; min-width: 0; font-size: 13.5px; color: var(--muted); }
+  .row .dcell.walt { width: 110px; flex: none; font-size: 13px; color: var(--muted); }
+  .row.deskcols .col-price { width: 130px; }
+
+  /* Kolonnetitler i seksjonslinja følger radenes kolonner */
+  .sec.cols { gap: 14px; padding-left: 19px; }
+  .sec.cols .t { flex: 2.2; }
+  .sec.cols .colhead { text-align: left; }
+  .sec.cols .colhead.bm { flex: 1.4; }
+  .sec.cols .colhead.notes { flex: 1.6; }
+  .sec.cols .colhead.date { width: 64px; text-align: right; }
+  .sec.cols .colhead.status { width: 96px; }
+  .sec.cols .colhead.quality { width: 78px; }
+  .sec.cols .colhead.wcat { flex: 1.4; }
+  .sec.cols .colhead.walt { width: 110px; }
+  .sec.cols .colhead.price { width: 130px; text-align: right; }
+
+  /* Skjemaer: panel som glir inn fra høyre i stedet for ark fra bunnen */
+  .sheet-bg { align-items: stretch; justify-content: flex-end; }
+  .sheet {
+    max-width: 400px; max-height: 100vh; height: 100%;
+    border-radius: 0; border-left: 1px solid var(--line);
+    animation: sheetright .22s cubic-bezier(.2,.8,.3,1);
+  }
+  .sheet .grab { display: none; }
+  .sheet .shead { padding-top: 18px; }
+  @keyframes sheetright { from { transform: translateX(40px); opacity: .6; } to { transform: none; opacity: 1; } }
+}

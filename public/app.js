@@ -47,6 +47,8 @@ const state = {
 const root = document.getElementById("root");
 const fmt = (n) => (n || n === 0 ? Number(n).toLocaleString("nb-NO") + " kr" : "–");
 const num = (n) => (n || n === 0 ? Number(n).toLocaleString("nb-NO") : "");
+// Kort dato til desktop-kolonna «Endret» (f.eks. «4. aug.»).
+const shortDate = (d) => { if (!d) return ""; const t = new Date(d); return isNaN(t) ? "" : t.toLocaleDateString("nb-NO", { day: "numeric", month: "short" }); };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const byId = (arr, id) => arr.find((x) => x.id === id);
 // Fjern vanlig markdown som ikke rendres i appen (sikkerhetsnett – modellen er
@@ -366,6 +368,43 @@ async function undoActions() {
   await loadAll(); toast("Angret");
 }
 
+// ── Sidekolonne (kun desktop ≥1024px – skjult med CSS på mobil) ──────
+// Faner + filtre bor her på stor skjerm (ingen egne filterark), jf. docs/design.
+function sidebarFilters() {
+  if (state.tab !== "oversikt") return "";
+  const all = state.inventory.filter((i) => !i.retired_at);
+  const cnt = (fn) => all.filter(fn).length;
+  const grp = (label, key, opts) => `<div class="sgrp"><div class="slabel">${label}</div>${opts.map((o) => {
+    const on = state.filters[key].includes(o.val);
+    return `<div class="sfilter ${on ? "on" : ""}" data-facet="${key}|${esc(o.val)}">
+      <span class="cb">${on ? "✓" : ""}</span><span class="l">${esc(o.label)}</span><span class="n">${o.n}</span></div>`;
+  }).join("")}</div>`;
+  return `<div class="sfilters">
+    ${grp("Tilstand", "status", STATUSES.map((s) => ({ val: s, label: STATUS_LABEL[s], n: cnt((i) => i.status === s) })))}
+    ${grp("Kategori", "category", CATEGORIES.map((c) => ({ val: c, label: c, n: cnt((i) => i.category === c) })).filter((o) => o.n))}
+    ${grp("Kvalitet", "quality", QUALITIES.map((qq) => ({ val: qq, label: QUALITY_LABEL[qq], n: cnt((i) => i.quality === qq) })).filter((o) => o.n))}
+  </div>`;
+}
+function renderSidebar() {
+  const counts = {
+    oversikt: state.inventory.filter((i) => !i.retired_at).length,
+    mangler: state.wishlist.length,
+    lister: state.lists.filter((l) => !l.archived_at).length,
+    merker: state.brands.length,
+  };
+  return `<aside class="side">
+    <div class="sbrand">${logo(34, "red")}<div><div class="t">Slagverk</div><div class="s">Randaberg MK</div></div></div>
+    <nav class="snav">${TABS.map(([k, l]) => `<div class="sitem ${state.tab === k ? "on" : ""}" data-tab="${k}"><span class="bar"></span>${l}<span class="sp"></span><span class="n">${counts[k]}</span></div>`).join("")}</nav>
+    ${sidebarFilters()}
+    <div class="sflex"></div>
+    <div class="sfoot">
+      <div class="slink ${state.tab === "generer" ? "on" : ""}" data-tab="generer">⎙ Generér oversikt</div>
+      <div class="slink" data-act="export-all">↓ Eksporter til Excel</div>
+      <div class="slink" data-act="logout">⎋ Logg ut</div>
+    </div>
+  </aside>`;
+}
+
 // ── Render ──
 let prevTab = null;
 let swipeIn = 0;   // 1 = ny fane skled inn fra høyre (neste), -1 = fra venstre
@@ -377,6 +416,9 @@ function render() {
   prevTab = state.tab;
   const title = TAB_TITLE[state.tab] || TAB_TITLE.oversikt;
   root.innerHTML = `
+    <div class="shell">
+    ${renderSidebar()}
+    <div class="content">
     <header><div class="appbar">
       ${logo(32, "red")}
       <div class="titles"><h1>${esc(title)}</h1><small>${esc(ORG)}</small></div>
@@ -392,6 +434,8 @@ function render() {
       : state.tab === "merker" ? viewMerker()
       : viewGenerer()
     }</main>
+    </div>
+    </div>
     ${renderBottom()}
     ${state.modal ? renderModal() : ""}
     ${state.filterSheet ? renderFilterSheet() : ""}
@@ -503,14 +547,18 @@ function invRow(i, opts = {}) {
   const attr = opts.attr || `data-edit-inv="${i.id}"`;
   const path = opts.path && invPath(i).length ? invPath(i).join(" › ") + " › " : "";
   const sub = path + invSub(i);
-  return `<div class="row st-${i.status} click ${child ? "child" : ""}" ${attr}>
+  const bm = [i.brand, i.model, i.size].filter(Boolean).join(" ");
+  return `<div class="row st-${i.status} click deskcols ${child ? "child" : ""}" ${attr}>
     <div class="main">
       <div class="title">${caret}${esc(i.type)}${count}</div>
       ${sub ? `<div class="sub">${esc(sub)}</div>` : ""}
       ${tags ? `<div class="tags">${tags}</div>` : ""}
     </div>
+    <span class="dcell bm">${esc(bm) || "—"}</span>
     <div class="col-status">${pillStatus(i.status)}</div>
     <div class="col-quality">${qmeter(i.quality)}</div>
+    <span class="dcell notes">${esc(i.notes) || "—"}</span>
+    <span class="dcell date">${shortDate(i.updated_at)}</span>
   </div>`;
 }
 // Tre-rader: komponent med deler er utvidbar; like blad-søsken grupperes ×N.
@@ -562,8 +610,10 @@ function viewOversikt() {
     sections = CATEGORIES.map((c) => ({ cat: c, items: roots.filter((i) => i.category === c) })).filter((x) => x.items.length);
   }
   const body = sections.map((sec) => `
-    <div class="sec"><span class="t">${esc(sec.cat)} <span class="n">${sec.items.length}</span></span>
-      <span class="colhead status">Tilstand</span><span class="colhead quality">Kvalitet</span></div>
+    <div class="sec cols"><span class="t">${esc(sec.cat)} <span class="n">${sec.items.length}</span></span>
+      <span class="colhead dcell bm">Merke og modell</span>
+      <span class="colhead status">Tilstand</span><span class="colhead quality">Kvalitet</span>
+      <span class="colhead dcell notes">Merknad</span><span class="colhead dcell date">Endret</span></div>
     ${flat ? sec.items.map((i) => invRow(i, { path: true })).join("") : invTree(sec.items)}`).join("");
 
   return `
@@ -647,7 +697,8 @@ function viewMangler() {
   const body = PRIORITIES.map((pri) => {
     const list = byPri(pri);
     if (!list.length) return "";
-    return `<div class="sec pri-${pri}"><span class="t">${PRI_LABEL[pri]} prioritet <span class="n">${list.length}</span></span>
+    return `<div class="sec cols pri-${pri}"><span class="t">${PRI_LABEL[pri]} prioritet <span class="n">${list.length}</span></span>
+        <span class="colhead dcell wcat">Kategori</span><span class="colhead dcell walt">Alternativer</span>
         <span class="colhead price">Est. pris</span></div>
       ${list.map((w) => {
         const open = !!state.expandedWish[w.id];
@@ -660,12 +711,14 @@ function viewMangler() {
           ...listsWith(w.id).map((l) => `<span class="tag liste" data-goto-list="${esc(l.id)}">I liste: ${esc(l.name)}</span>`),
           open ? "" : `<span class="act" data-edit-wish="${w.id}">Rediger</span>`,
         ].filter(Boolean).join("");
-        return `<div class="row pri-${pri} click" data-togglewish="${w.id}">
+        return `<div class="row pri-${pri} click deskcols" data-togglewish="${w.id}">
           <div class="main">
             <div class="title"><span class="caret">${open ? "▾" : "▸"}</span> ${esc(w.type)}</div>
             <div class="sub">${esc(w.category)}${n ? ` · ${n} alternativ${n > 1 ? "er" : ""}` : ""}</div>
             <div class="tags">${tags}</div>
           </div>
+          <span class="dcell wcat">${esc(w.category)}</span>
+          <span class="dcell walt">${n ? `${n} alternativ${n > 1 ? "er" : ""}` : "—"}</span>
           <div class="col-price">${lines.map((l) => `<div class="price">${l}</div>`).join("")}</div>
         </div>
         ${open ? wishExpand(w) : ""}`;
