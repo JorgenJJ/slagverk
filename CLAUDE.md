@@ -124,15 +124,26 @@ i UI). Full tabell-spec: [docs/datamodell-og-api.md](docs/datamodell-og-api.md).
 
 ## Tema / design
 
+- **Full palett, typografi og skjermstruktur: [docs/design.md](docs/design.md).**
+  Les den før du rører farger.
 - CSS-variabler øverst i `styles.css`. Palett: pergament `--paper`, korpsrødt
-  `--red` (signal, ikke flatefyll), messing `--brass`. Fonter: Fraunces (display)
-  + Hanken Grotesk (UI). **Ikke** grelle farger i UX.
+  `--red` (signal, ikke flatefyll), messing `--brass` (pris/verdi). Fonter: Fraunces
+  (display) + Hanken Grotesk (UI). **Ikke** grelle farger i UX.
+- Kun **tilstand** har farge (venstre stripe + merkelapp); **kvalitet** er en nøytral
+  messing-måler i tre trinn, så de aldri forveksles. Prioritet arver tilstandsskalaen.
+- Headeren er papirfarget (ikke rød blokk). Faner og AI-bar ligger fast i bunnen.
+  Skjemaer er **ark fra bunnen** (`.sheet`), ikke modaler midt på skjermen; nedtrekk
+  med få faste verdier er segmenterte valg (`.seg`).
+- **Mørk modus er ikke implementert.** Fasit-verdier og oppskrift ligger i
+  [docs/design.md](docs/design.md#mørk-modus--ikke-implementert). Ikke start på den
+  uten å lese punktlista der (logo-variant, `theme-color`, utskrift skal forbli lys).
 - Logo: `public/randaberg-logo.png` (farge) + transparente linje-varianter
-  `randaberg-logo-white.png` (hvit, for rød bakgrunn) og `-red.png` (rød, for lys
+  `randaberg-logo-white.png` (hvit, for mørk/rød bakgrunn) og `-red.png` (rød, for lys
   bakgrunn), generert med `node scripts/make-logo-variants.js`. Bruk
   `logo(size, variant)` med `"full" | "white" | "red"` (SVG-skjold som fallback).
-  Innlogging bruker `red`-varianten. PWA-ikon `icon-192/512.png` lages med
-  `node scripts/make-icons.js` (hvit krest på heldekkende rødt – ingen hvite kanter).
+  Appen bruker i dag `red` overalt siden alle flater er lyse. PWA-ikon
+  `icon-192/512.png` lages med `node scripts/make-icons.js` (hvit krest på heldekkende
+  rødt – ingen hvite kanter).
 
 ## Service worker
 
