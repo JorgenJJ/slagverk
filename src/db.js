@@ -209,7 +209,28 @@ export async function removeFromList(env, listId, optionId) {
 
 // ───────────────────────── Godkjente merker ─────────────────────────
 
-const BRAND_FIELDS = ["name", "category", "notes", "sort_order"];
+// Et merke kan høre til flere kategorier. Kanonisk form er JSON-arrayen
+// `categories`; `category` speiler den første, så eldre rader, sorteringen under
+// og AI-verktøyenes enum fortsatt virker. Les ALLTID via brandCategories().
+export function brandCategories(b) {
+  if (!b) return [];
+  if (b.categories) {
+    try { const a = JSON.parse(b.categories); if (Array.isArray(a) && a.length) return a.map(String); } catch { /* faller tilbake */ }
+  }
+  return b.category ? [b.category] : [];
+}
+// Godtar `categories` (array eller JSON-streng) og/eller `category` (én verdi).
+// Returnerer null når kalleren ikke rørte kategori i det hele tatt.
+function brandCatColumns(b) {
+  let cats = b.categories !== undefined ? b.categories
+    : b.category !== undefined ? [b.category] : undefined;
+  if (cats === undefined) return null;
+  if (typeof cats === "string") { try { cats = JSON.parse(cats); } catch { cats = [cats]; } }
+  if (!Array.isArray(cats)) cats = [cats];
+  cats = [...new Set(cats.filter(Boolean).map(String))];
+  if (!cats.length) cats = ["Generelt"];
+  return { category: cats[0], categories: JSON.stringify(cats) };
+}
 
 export async function listBrands(env) {
   const { results } = await env.DB.prepare(
@@ -223,16 +244,20 @@ export async function getBrand(env, id) {
 export async function createBrand(env, b) {
   if (!b.name) throw new ValidationError("name er påkrevd");
   const id = b.id || newId("BR");
+  const cats = brandCatColumns(b) || { category: "Generelt", categories: JSON.stringify(["Generelt"]) };
   await env.DB.prepare(
-    "INSERT INTO brands (id, name, category, notes, sort_order) VALUES (?, ?, ?, ?, ?)"
-  ).bind(id, b.name, b.category || "Generelt", b.notes || "", Number(b.sort_order) || 0).run();
+    "INSERT INTO brands (id, name, category, categories, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(id, b.name, cats.category, cats.categories, b.notes || "", Number(b.sort_order) || 0).run();
   return getBrand(env, id);
 }
 export async function updateBrand(env, id, b) {
   const before = await getBrand(env, id);
   if (!before) return null;
   const sets = [], vals = [];
-  for (const f of BRAND_FIELDS) if (f in b) { sets.push(`${f} = ?`); vals.push(f === "sort_order" ? Number(b[f]) || 0 : b[f]); }
+  for (const f of ["name", "notes", "sort_order"]) if (f in b) { sets.push(`${f} = ?`); vals.push(f === "sort_order" ? Number(b[f]) || 0 : b[f]); }
+  // category/categories skrives alltid som par, aldri hver for seg.
+  const cats = brandCatColumns(b);
+  if (cats) { sets.push("category = ?", "categories = ?"); vals.push(cats.category, cats.categories); }
   if (!sets.length) throw new ValidationError("Ingen felter å oppdatere");
   sets.push("updated_at = datetime('now')");
   vals.push(id);
