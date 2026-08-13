@@ -1129,9 +1129,19 @@ function wire() {
   // Søk (behold fokus og markør etter re-render)
   const si = root.querySelector("#searchInput");
   if (si) {
-    si.oninput = () => { state.q = si.value; state.searchFocus = true; render(); };
+    si.oninput = () => {
+      state.q = si.value; state.searchFocus = true; state.searchCaret = si.selectionStart;
+      // Rebygget i render() fyrer blur på det gamle feltet (Chrome gjør det før
+      // elementet fjernes) – koble av handleren så det ikke tolkes som ekte blur.
+      si.onblur = null;
+      render();
+    };
     si.onblur = () => { state.searchFocus = false; };
-    if (state.searchFocus) { si.focus(); si.setSelectionRange(si.value.length, si.value.length); }
+    if (state.searchFocus) {
+      si.focus();
+      const pos = state.searchCaret ?? si.value.length;
+      si.setSelectionRange(pos, pos);
+    }
   }
 
   // Filtre. Chips i filterarket oppdaterer seg selv og tellern – lista bak
