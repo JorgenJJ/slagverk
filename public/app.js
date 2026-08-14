@@ -1268,14 +1268,18 @@ function wire() {
       "opt-price": () => sheetFetchPrice("price"),
       "del-list-sheet": () => { if (confirm("Slette listen?")) deleteList(state.modal.item.id); },
     };
-    if (A[act]) return A[act]();
-    if (act === "close-modal") { if (e.target.hasAttribute("data-stop")) return; state.modal = null; state.filterSheet = false; return render(); }
-    if (act === "save" || act === "del") return modalAction(act);
-    if (act === "save-list") return modalSaveList();
-    if (act === "save-brand") return modalSaveBrand();
-    if (act === "del-brand") return deleteBrand(state.modal.item.id);
-    if (act === "save-opt") return modalSaveOption();
-    if (act === "del-opt") return deleteOption(state.modal.item.id);
+    const result = (() => {
+      if (A[act]) return A[act]();
+      if (act === "close-modal") { if (e.target.hasAttribute("data-stop")) return; state.modal = null; state.filterSheet = false; return render(); }
+      if (act === "save" || act === "del") return modalAction(act);
+      if (act === "save-list") return modalSaveList();
+      if (act === "save-brand") return modalSaveBrand();
+      if (act === "del-brand") return deleteBrand(state.modal.item.id);
+      if (act === "save-opt") return modalSaveOption();
+      if (act === "del-opt") return deleteOption(state.modal.item.id);
+    })();
+    // Feilede API-kall må vises – uten dette blir de en stille unhandled rejection.
+    return Promise.resolve(result).catch((err) => toast(err.message || "Noe gikk galt"));
   });
   q("[data-stop]").forEach((el) => el.onclick = (e) => e.stopPropagation());
   applyDockViewport();
