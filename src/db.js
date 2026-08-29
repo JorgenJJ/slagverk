@@ -295,7 +295,33 @@ export async function updateOption(env, id, b) {
   if (!sets.length) throw new ValidationError("Ingen felter å oppdatere");
   vals.push(id);
   await env.DB.prepare(`UPDATE wishlist_options SET ${sets.join(", ")} WHERE id = ?`).bind(...vals).run();
-  return { before, after: await getOption(env, id) };
+  const after = await getOption(env, id);
+  // Synk mangelen når det «gjeldende» alternativet endres, så pris/lenke/størrelse
+  // aldri kommer i utakt (uansett om endringen kom fra UI eller AI).
+  const synced = await syncWishlistFromOption(env, before, after);
+  return { before, after, synced };
+}
+
+// Speil endringer i et alternativ tilbake til mangelen, men bare når alternativet
+// er det «valgte»: det ligger i en innkjøpsliste, eller er mangelens eneste.
+// Returnerer { before, after } for wishlist-raden hvis noe ble synket, ellers null.
+async function syncWishlistFromOption(env, optBefore, optAfter) {
+  const w = await getWishlist(env, optAfter.wishlist_id);
+  if (!w) return null;
+  const inList = await env.DB.prepare("SELECT 1 FROM list_items WHERE option_id = ? LIMIT 1").bind(optAfter.id).first();
+  if (!inList) {
+    const cnt = await env.DB.prepare("SELECT COUNT(*) AS n FROM wishlist_options WHERE wishlist_id = ?").bind(optAfter.wishlist_id).first();
+    if (!cnt || cnt.n !== 1) return null;
+  }
+  const patch = {};
+  if (optAfter.price !== optBefore.price && optAfter.price !== null) patch.estimated_price = optAfter.price;
+  if (optAfter.link !== optBefore.link && optAfter.link) patch.link = optAfter.link;
+  // Størrelse: ren streng-heuristikk – bytt gammel size i mangel-teksten hvis den står der.
+  if (optAfter.size !== optBefore.size && optBefore.size && optAfter.size && w.type.includes(optBefore.size)) {
+    patch.type = w.type.split(optBefore.size).join(optAfter.size);
+  }
+  if (!Object.keys(patch).length) return null;
+  return updateWishlist(env, w.id, patch);
 }
 export async function deleteOption(env, id) {
   const before = await getOption(env, id);
