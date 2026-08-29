@@ -30,12 +30,14 @@ const PRIO = ["høy", "middels", "lav"];
 // Slagverksordliste: kanonisk norsk = engelsk / synonymer. Lar modellen forstå
 // brukeren uansett term (engelsk, slang, dialekt) og bruke riktig norsk navn.
 // Format per linje: «Norsk (engelsk; synonym, synonym)».
+// UTVID DENNE LISTA for å standardisere flere navn (krever deploy) – modellen
+// instrueres til å lagre/svare med det kanoniske norske navnet.
 const ORDLISTE = `Trommer: Skarptromme (snare drum; rulletromme, militærtromme) · Marsjtromme/Felttromme (marching snare; pikoloskarptromme) · Tenortromme (tenor drum) · Konsertstortromme (concert bass drum; grand cassa, cassa, stortromme) · Bassdrum/Fotstortromme (bass drum, kick drum) · Tomtom (tom-tom; tom, rack tom, gulvtom, floor tom) · Trommesett (drum kit/set; batteri) · Pauker (timpani; kettledrums, pauken, timbales) · Rototom · Bongos (bongo drums) · Congas (conga drums; tumbadora) · Djembe · Cajon (cajón)
 Trommeskinn: Trommeskinn (drumhead/skin; membran, skinn, head) · Slagskinn (batter head) · Resonansskinn (resonant head; reso) · Snareside (snare-side head; svilleskinn) · Enkeltlagsskinn (single-ply; 1-ply) · Dobbeltlagsskinn (two-ply; 2-ply) · Klart skinn (clear) · Betrukket skinn (coated) · Paukeskinn (timpani head) · Demperand (damping/muffling ring; muffler)
 Melodisk: Klokkespill (glockenspiel/bells; campanelli, carillon) · Lyrespill (lyre/bell lyre; marsjklokkespill) · Xylofon (xylophone) · Marimba · Vibrafon (vibraphone; vibes, vibraharp) · Rørklokker (tubular bells/chimes) · Crotaler (crotales; antikke cymbaler) · Celesta
-Cymbaler: A2-cymbal (clash cymbals) · Orkestercymbal (suspended cymbal; susp cym) · Crashcymbal (crash) · Ridecymbal (ride) · Hi-hat (hihat, charleston) · Tamtam (tam-tam) · Gong · Splash-cymbal · China-cymbal
-Perkusjon: Triangel (triangle) · Tamburin (tambourine) · Kastanjettar (castanets; kastagnetter) · Maracas · Treblokk (wood block) · Claves (rytmepinner, klave) · Guiro (güiro) · Kubjelle (cowbell) · Bjeller (sleigh bells; jingles) · Rangle (ratchet; skralle, skrangle) · Pisk (whip/slapstick) · Vibrasap (vibraslap) · Templeblokker (temple blocks) · Vindspill (wind chimes/mark tree; barchimes) · Vindmaskin (wind machine) · Cabasa (afuche) · Shaker
-Stikker og klubber: Trommestikke (drumstick; stikke) · Visp (brush; trommebørste) · Rods (multi-rods) · Mallet/Kølle (mallet) · Garnkølle (yarn/soft mallet) · Gummikølle (rubber mallet) · Plastikkølle (plastic/hard mallet) · Paukekølle (timpani mallet) · Stortrommekølle (bass drum mallet) · Triangelstikke (triangle beater) · Bue (bow)`;
+Cymbaler: A2-cymbal (clash cymbals) · Orkestercymbal (suspended cymbal; susp cym) · Crashcymbal (crash) · Ridecymbal (ride) · Hi-hat (hihat, hats) · Tamtam (tam-tam) · Gong · Splash-cymbal (splash) · China-cymbal (china)
+Perkusjon: Triangel (triangle) · Tamburin (tambourine, tamb) · Kastanjettar (castanets; kastagnetter) · Maracas · Treblokk (wood block) · Claves (rytmepinner, klave) · Guiro (güiro) · Kubjelle (cowbell) · Bjeller (sleigh bells; jingles) · Rangle (ratchet; skralle, skrangle) · Pisk (whip/slapstick) · Vibrasap (vibraslap) · Templeblokker (temple blocks) · Vindspill (wind chimes/mark tree; barchimes) · Vindmaskin (wind machine) · Cabasa (afuche) · Shaker
+Stikker og klubber: Trommestikke (drumstick; stikke, hard stick) · Visp (brush; trommebørste) · Rods (multi-rods) · Mallet/Kølle (mallet) · Garnkølle (yarn/soft mallet) · Gummikølle (rubber mallet) · Plastikkølle (plastic/hard mallet) · Paukekølle (timpani mallet) · Stortrommekølle (bass drum mallet, club, beater) · Triangelstikke (triangle beater) · Bue (bow)`;
 const str = (d = "") => ({ type: "string", description: d });
 const enm = (vals, d = "") => ({ type: "string", enum: vals, description: d });
 const num = (d = "kroner") => ({ type: "number", description: d });
@@ -126,7 +128,10 @@ const OPENAI_TOOLS = TOOLS.map((t) => ({ type: "function", function: { name: t.n
 //   { user: "det brukeren skriver", action: "kort: hvilket verktøy med hvilke felt" }
 // F.eks.: { user: "…", action: "update_inventory(id=…, status=ødelagt)" }
 const FEWSHOT = [
-  // { user: "", action: "" },
+  { user: "vi mangler en 12-tommers tomtom",
+    action: "add_wishlist(type=Tomtom 12\", category=Trommer) → search_store(«<foretrukket trommemerke> tomtom 12») → add_option(wishlist_ref=id-en fra add_wishlist-svaret, link=URL fra søket) for 1–2 gode treff → kort svar med lenkene" },
+  { user: "endre tomtommen i innkjøpslista til 13 tommer",
+    action: "update_option(ref=alternativet, size=13\") – mangelen synkes automatisk (pris/lenke/størrelse), ingen ekstra kall trengs" },
 ];
 
 // ── Navn→id-oppslag (B8) ──
@@ -165,7 +170,7 @@ async function runTool(env, name, input) {
     case "add_inventory": {
       if (input.parent_ref) input.parent_id = await resolveRef(env, "inventory", input.parent_ref);
       const row = await db.createInventory(env, input);
-      return { summary: `La til ${row.type}`, action: { kind: "inventory", op: "create", id: row.id, after: row } };
+      return { summary: `La til ${row.type} (id ${row.id})`, action: { kind: "inventory", op: "create", id: row.id, after: row } };
     }
     case "update_inventory": {
       const id = await resolveRef(env, "inventory", input.ref);
@@ -179,7 +184,7 @@ async function runTool(env, name, input) {
     // ── Mangler ──
     case "add_wishlist": { if (input.replaces_ref) input.replaces_inventory_id = await resolveRef(env, "inventory", input.replaces_ref);
       const row = await db.createWishlist(env, input);
-      return { summary: `La til mangel ${row.type}`, action: { kind: "wishlist", op: "create", id: row.id, after: row } }; }
+      return { summary: `La til mangel ${row.type} (id ${row.id})`, action: { kind: "wishlist", op: "create", id: row.id, after: row } }; }
     case "update_wishlist": { const id = await resolveRef(env, "wishlist", input.ref);
       if (input.replaces_ref) input.replaces_inventory_id = await resolveRef(env, "inventory", input.replaces_ref);
       const r = await db.updateWishlist(env, id, input);
@@ -189,7 +194,7 @@ async function runTool(env, name, input) {
 
     // ── Innkjøpslister ──
     case "create_list": { const row = await db.createList(env, input);
-      return { summary: `Opprettet listen «${row.name}»`, action: { kind: "list", op: "create", id: row.id, after: row } }; }
+      return { summary: `Opprettet listen «${row.name}» (id ${row.id})`, action: { kind: "list", op: "create", id: row.id, after: row } }; }
     case "update_list": { const id = await resolveRef(env, "list", input.ref); const r = await db.updateList(env, id, input);
       return { summary: `Oppdaterte listen «${r.after.name}»`, action: { kind: "list", op: "update", id, before: r.before, after: r.after } }; }
     case "delete_list": { const id = await resolveRef(env, "list", input.ref); const r = await db.deleteList(env, id);
@@ -203,7 +208,7 @@ async function runTool(env, name, input) {
 
     // ── Godkjente merker ──
     case "add_brand": { const row = await db.createBrand(env, input);
-      return { summary: `La til merket ${row.name} (${db.brandCategories(row).join(", ")})`, action: { kind: "brand", op: "create", id: row.id, after: row } }; }
+      return { summary: `La til merket ${row.name} (${db.brandCategories(row).join(", ")}) (id ${row.id})`, action: { kind: "brand", op: "create", id: row.id, after: row } }; }
     case "update_brand": { const id = await resolveRef(env, "brand", input.ref); const r = await db.updateBrand(env, id, input);
       return { summary: `Oppdaterte merket ${r.after.name} (${db.brandCategories(r.after).join(", ")})`, action: { kind: "brand", op: "update", id, before: r.before, after: r.after } }; }
     case "delete_brand": { const id = await resolveRef(env, "brand", input.ref); const r = await db.deleteBrand(env, id);
@@ -243,10 +248,16 @@ async function runTool(env, name, input) {
         } catch { input.link = ""; linkNote = " (lenke kunne ikke verifiseres og ble fjernet)"; }
       }
       const row = await db.createOption(env, wid, input);
-      return { summary: `La til alternativ ${[row.brand, row.model].filter(Boolean).join(" ")}${row.price ? ` (${row.price} kr)` : ""}${linkNote}`, action: { kind: "option", op: "create", id: row.id, after: row } };
+      return { summary: `La til alternativ ${[row.brand, row.model].filter(Boolean).join(" ")}${row.price ? ` (${row.price} kr)` : ""} (id ${row.id})${linkNote}`, action: { kind: "option", op: "create", id: row.id, after: row } };
     }
     case "update_option": { const id = await resolveRef(env, "option", input.ref); const r = await db.updateOption(env, id, input);
-      return { summary: `Oppdaterte alternativ`, action: { kind: "option", op: "update", id, before: r.before, after: r.after } }; }
+      const acts = [{ kind: "option", op: "update", id, before: r.before, after: r.after }];
+      let syncNote = "";
+      if (r.synced) { // db.js synket mangelen automatisk – meld fra og gjør det angre-bart
+        acts.push({ kind: "wishlist", op: "update", id: r.synced.after.id, before: r.synced.before, after: r.synced.after });
+        syncNote = " (mangelen ble synket tilsvarende – ikke kall update_wishlist)";
+      }
+      return { summary: `Oppdaterte alternativ${syncNote}`, actions: acts }; }
     case "delete_option": { const id = await resolveRef(env, "option", input.ref); const r = await db.deleteOption(env, id);
       return { summary: `Slettet alternativ`, action: { kind: "option", op: "delete", id, before: r.before } }; }
 
@@ -263,7 +274,9 @@ async function anthropicLoop(env, system, userMessages) {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": env.AI_API_KEY, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model, max_tokens: 2048, system, tools: TOOLS, messages }),
+      // Systemprompten (m/ hele DB-en) sendes hver runde – cache den, så de
+      // opptil MAX_STEPS rundene per melding ikke betaler full pris hver gang.
+      body: JSON.stringify({ model, max_tokens: 2048, system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }], tools: TOOLS, messages }),
     });
     if (!resp.ok) throw new Error(await resp.text());
     const data = await resp.json();
@@ -275,7 +288,8 @@ async function anthropicLoop(env, system, userMessages) {
     messages.push({ role: "assistant", content });
     const results = [];
     for (const tu of toolUses) {
-      try { const r = await runTool(env, tu.name, tu.input || {}); if (r.action) actions.push(r.action);
+      try { const r = await runTool(env, tu.name, tu.input || {});
+        if (r.action) actions.push(r.action); if (r.actions) actions.push(...r.actions);
         results.push({ type: "tool_result", tool_use_id: tu.id, content: r.summary }); }
       catch (e) { results.push({ type: "tool_result", tool_use_id: tu.id, content: "Feil: " + e.message, is_error: true }); }
     }
@@ -307,7 +321,8 @@ async function openaiLoop(env, system, userMessages) {
     for (const tc of calls) {
       let result;
       try { const args = JSON.parse((tc.function && tc.function.arguments) || "{}");
-        const r = await runTool(env, tc.function.name, args); if (r.action) actions.push(r.action); result = r.summary; }
+        const r = await runTool(env, tc.function.name, args);
+        if (r.action) actions.push(r.action); if (r.actions) actions.push(...r.actions); result = r.summary; }
       catch (e) { result = "Feil: " + e.message; }
       messages.push({ role: "tool", tool_call_id: tc.id, content: result });
     }
@@ -376,6 +391,11 @@ LENKER: bruk KUN en URL som search_store FAKTISK returnerte, kopiert ordrett som
 link i add_option (da hentes pris automatisk). Du skal ALDRI konstruere, gjette,
 endre eller hente en produkt-URL fra hukommelsen. Får du ingen relevante treff,
 si det – ikke fest en lenke du ikke har fått fra search_store.
+NY MANGEL: Når du oppretter en ny mangel og brukeren ikke har oppgitt et konkret
+produkt: søk UOPPFORDRET med search_store (foretrukne merker for kategorien) og
+legg til 1–2 gode referanseprodukter med add_option (ekte lenke + pris). Nevn dem
+kort i svaret. Gir søkene ingen relevante treff, lagre mangelen uten alternativer
+og si det.
 
 FORETRUKNE MERKER PER KATEGORI (bruk når brukeren ikke oppgir merke):
 ${brandHint}
@@ -392,6 +412,11 @@ DATAMODELL
   (søk med search_store → add_option), og legg deretter DET produktet i lista med
   add_to_list (option_ref). Har mangelen flere alternativer, velg det beste.
 - Godkjente merker = foretrukne leverandører, gruppert etter utstyrstype.
+- DATA nederst er et ØYEBLIKKSBILDE tatt før verktøykallene dine. For rader du
+  nettopp opprettet/endret: stol på tool-resultatene – de oppgir id-en, og den
+  bruker du i senere kall (f.eks. wishlist_ref i add_option).
+- Endrer du et alternativ som ligger i en liste (eller er mangelens eneste),
+  synkes mangelens pris/lenke/størrelse AUTOMATISK – ikke gjør det manuelt.
 
 GYLDIGE VERDIER
 kategori = Trommer|Melodisk|Pauker|Cymbaler|Stativer|Perkusjon|Stikker og klubber
