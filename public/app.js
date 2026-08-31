@@ -949,7 +949,7 @@ function viewGenerer() {
             return `<div class="item ${depth ? "sub" : ""}" ${depth > 1 ? `style="padding-left:${depth * 14}px"` : ""}><span>${esc(i.type)}${n > 1 ? ` <span class="cnt">×${n}</span>` : ""}</span><span class="det">${esc(det)}</span></div>`; }).join("")}
         </div>`).join("")}
       </div>
-      <div class="footer-note"><b>NB:</b> Randaberg Musikkorps jobber med å oppgradere slagverkutstyret. Lista inneholder utstyr med varierende standard. Alt som er oppgitt er fullt mulig å bruke, men kan være slitt / av lavere kvalitet. Ta gjerne kontakt på jorgen.jarnes@gmail.com ved spørsmål om utstyret.</div>
+      <div class="footer-note">Ta kontakt med jorgen.jarnes@gmail.com ved spørsmål om utstyret.</div>
     </div>`}`;
 }
 // Tilpass-modus: én rad pr. element (individuelt – ekskludering er pr. id, ikke
