@@ -8,7 +8,7 @@ import { newId } from "./helpers.js";
 
 export class ValidationError extends Error {}
 
-const INV_FIELDS  = ["type", "brand", "model", "size", "category", "status", "quality", "notes", "parent_id", "retired_at"];
+const INV_FIELDS  = ["type", "brand", "model", "size", "category", "status", "quality", "notes", "parent_id", "retired_at", "report_excluded", "report_depth"];
 const WISH_FIELDS = ["type", "category", "priority", "estimated_price", "link", "notes", "budgeted", "replaces_inventory_id"];
 const LIST_FIELDS = ["name", "sort_order", "budget", "notes", "archived_at"];
 

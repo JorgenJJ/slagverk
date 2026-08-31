@@ -39,7 +39,7 @@ const state = {
   filterSheet: false,
   expandedGroups: {}, expandedWish: {}, expandedNodes: {},
   retiredView: false, listArchive: false, exportMenu: null,
-  ovMinStatus: "Alle", ovMinQuality: "Alle",
+  ovMinStatus: "Alle", ovMinQuality: "Alle", genCustomize: false,
   chat: [], chatBusy: false, chatOpen: false, lastActions: [],
   modal: null,
 };
@@ -288,6 +288,8 @@ async function toggleListItem(listId, optionId, on) {
   await loadAll();
 }
 async function addToListChosen(listId, optionId) {
+  const l = byId(state.lists, listId);
+  if (l && (l.items || []).some((it) => it.option_id === optionId)) { state.modal = null; render(); return toast("Ligger allerede i listen"); }
   await api(`/lists/${listId}/items`, { method: "POST", body: JSON.stringify({ option_id: optionId }) });
   state.modal = null; await loadAll(); toast("Lagt til i listen");
 }
@@ -387,8 +389,7 @@ function render() {
     </div></header>
     <main>${
       state.tab === "oversikt" ? viewOversikt()
-      : state.tab === "mangler" ? viewMangler()
-      : state.tab === "lister" ? viewLister()
+      : state.tab === "mangler" || state.tab === "lister" ? viewSplit()
       : state.tab === "merker" ? viewMerker()
       : viewGenerer()
     }</main>
@@ -609,9 +610,22 @@ function viewRetired(retired) {
     </div>`;
 }
 
+// ── Delt visning (desktop): Mangler + Innkjøp side om side ───────────
+// Begge kolonner rendres alltid; under 1000px skjuler CSS den inaktive
+// (mobil uendret), over vises begge. Ingen id-kollisjon: kun viewMangler
+// har #searchInput, og wire() binder via querySelectorAll.
+const isSplit = () => matchMedia("(min-width: 1000px)").matches;
+let dragPayload = null;
+function viewSplit() {
+  return `<div class="split">
+    <section class="split-col ${state.tab === "mangler" ? "active" : ""}">${viewMangler()}</section>
+    <section class="split-col ${state.tab === "lister" ? "active" : ""}">${viewLister()}</section>
+  </div>`;
+}
+
 // ── Mangler ──────────────────────────────────────────────────────────
 function optionBlock(w, o) {
-  return `<div class="opt">
+  return `<div class="opt" ${isSplit() ? `draggable="true" data-drag-opt="${o.id}"` : ""}>
     <div class="head">
       <div class="m"><b>${esc(o.brand) || "Alternativ"}</b> ${esc(o.model)} ${o.size ? `<span class="mono">${esc(o.size)}</span>` : ""}
         ${o.info ? `<div class="info">${esc(o.info)}</div>` : ""}</div>
@@ -660,7 +674,7 @@ function viewMangler() {
           ...listsWith(w.id).map((l) => `<span class="tag liste" data-goto-list="${esc(l.id)}">I liste: ${esc(l.name)}</span>`),
           open ? "" : `<span class="act" data-edit-wish="${w.id}">Rediger</span>`,
         ].filter(Boolean).join("");
-        return `<div class="row pri-${pri} click" data-togglewish="${w.id}">
+        return `<div class="row pri-${pri} click" data-togglewish="${w.id}" ${isSplit() && n ? `draggable="true" data-drag-wish="${w.id}"` : ""}>
           <div class="main">
             <div class="title"><span class="caret">${open ? "▾" : "▸"}</span> ${esc(w.type)}</div>
             <div class="sub">${esc(w.category)}${n ? ` · ${n} alternativ${n > 1 ? "er" : ""}` : ""}</div>
@@ -722,7 +736,7 @@ function listSection(l) {
   const items = (l.items || []).map((it) => ({ it, o: optionById(it.option_id), w: wish(it.wishlist_id) })).filter((x) => x.o);
   const pct = l.budget ? Math.min(100, (sum / l.budget) * 100) : 0;
   const over = l.budget ? sum > l.budget : false;
-  return `
+  return `<div class="listbox" data-droplist="${l.id}">
     <div class="sec list"><span class="t">${esc(l.name)} <span class="n">${items.length}</span></span>
       <span class="sum">${fmt(sum)}</span>
       <span class="act" data-edit-list="${l.id}">✎</span></div>
@@ -751,7 +765,7 @@ function listSection(l) {
     ${l.budget ? `<div class="budget ${over ? "over" : ""}">
       <div class="b1"><span>Budsjett ${fmt(l.budget)}</span><b>${over ? "Over med " + fmt(sum - l.budget) : fmt(l.budget - sum) + " igjen"}</b></div>
       <div class="bar"><i style="width:${pct}%"></i></div>
-    </div>` : ""}`;
+    </div>` : ""}</div>`;
 }
 function viewListArchive(archived) {
   return `
@@ -789,22 +803,67 @@ function viewMerker() {
 }
 
 // ── Generér oversikt ─────────────────────────────────────────────────
-function viewGenerer() {
+// Felles utvalg for rapport-HTML og -tekst: [{ i: rot, kids: [{ i, depth }] }]
+// pr. inkludert rot, i tre-rekkefølge. Respekterer min-tilstand/-kvalitet,
+// report_excluded (skjuler hele subtreet) og report_depth (barnenivåer pr. rot).
+function reportItems() {
   const minS = state.ovMinStatus, minQ = state.ovMinQuality;
   const pass = (i) => (minS === "Alle" || STATUS_RANK[i.status] >= STATUS_RANK[minS]) && (minQ === "Alle" || QUALITY_RANK[i.quality] >= QUALITY_RANK[minQ]);
-  const included = state.inventory.filter((i) => (!i.parent_id || !inv(i.parent_id)) && pass(i));
+  const collect = (i, depth, maxDepth, kids) => {
+    if (depth > maxDepth) return;
+    for (const c of invChildren(i.id)) {
+      if (c.report_excluded || !pass(c)) continue;
+      kids.push({ i: c, depth });
+      collect(c, depth + 1, maxDepth, kids);
+    }
+  };
+  const entries = [];
+  invRoots().forEach((r) => {
+    if (r.report_excluded || !pass(r)) return;
+    const kids = [];
+    collect(r, 1, r.report_depth || 0, kids);
+    entries.push({ i: r, kids });
+  });
+  return entries;
+}
+// Grupperer like linjer (samme nøkkel + dybde) med antall. Bevarer rekkefølgen.
+function groupLines(lines) {
+  const groups = []; const gm = new Map();
+  lines.forEach(({ i, depth }) => {
+    const k = depth + "|" + [i.type, i.brand, i.model, i.size].join("|");
+    if (!gm.has(k)) { gm.set(k, { i, depth, n: 0 }); groups.push(k); }
+    gm.get(k).n++;
+  });
+  return groups.map((k) => gm.get(k));
+}
+// Pr. kategori (etter rotens kategori): enkle røtter gruppert ×n, røtter med
+// barn som egne linjer fulgt av grupperte, innrykkede barnelinjer.
+function reportLinesByCat() {
+  const entries = reportItems();
+  return CATEGORIES.map((c) => {
+    const inCat = entries.filter((e) => e.i.category === c);
+    if (!inCat.length) return null;
+    const lines = [
+      ...groupLines(inCat.filter((e) => !e.kids.length).map((e) => ({ i: e.i, depth: 0 }))),
+      ...inCat.filter((e) => e.kids.length).flatMap((e) => [{ i: e.i, depth: 0, n: 1 }, ...groupLines(e.kids)]),
+    ];
+    return { cat: c, lines };
+  }).filter(Boolean);
+}
+function viewGenerer() {
   const date = new Date().toLocaleDateString("nb-NO", { day: "2-digit", month: "2-digit", year: "numeric" });
   const sel = (label, key, val, opts) => `<div class="field"><label>${label}</label><select data-ov="${key}">${opts.map((o) => `<option value="${o[0]}" ${val === o[0] ? "selected" : ""}>${o[1]}</option>`).join("")}</select></div>`;
-  const cats = CATEGORIES.filter((c) => included.some((i) => i.category === c));
   return `
     <div class="gen-controls">
-      ${sel("Minste tilstand", "status", minS, [["Alle", "Alle"], ["ødelagt", "Min. ødelagt"], ["redusert", "Min. redusert"], ["ok", "Kun OK"]])}
-      ${sel("Minste kvalitet", "quality", minQ, [["Alle", "Alle"], ["dårlig", "Min. dårlig"], ["greit", "Min. greit"], ["bra", "Kun bra"]])}
+      ${sel("Minste tilstand", "status", state.ovMinStatus, [["Alle", "Alle"], ["ødelagt", "Min. ødelagt"], ["redusert", "Min. redusert"], ["ok", "Kun OK"]])}
+      ${sel("Minste kvalitet", "quality", state.ovMinQuality, [["Alle", "Alle"], ["dårlig", "Min. dårlig"], ["greit", "Min. greit"], ["bra", "Kun bra"]])}
       <div style="flex:1"></div>
+      <button class="btn ghost sm ${state.genCustomize ? "on" : ""}" data-act="toggle-gen-custom">⚙ Tilpass</button>
       <button class="btn ghost sm" data-act="copy-report">⧉ Kopier</button>
       <button class="btn ghost sm" data-act="print-report">⎙ Skriv ut</button>
       <button class="btn brass" data-act="download-report">↓ Last ned</button>
     </div>
+    ${state.genCustomize ? genCustomizePanel() : `
     <div class="report" id="report">
       <div class="report-head">
         <div>
@@ -814,34 +873,50 @@ function viewGenerer() {
         <img class="report-logo" src="/randaberg-logo-red.png" alt="Randaberg Musikkorps" onerror="this.style.display='none'" />
       </div>
       <div class="grid2">
-        ${cats.map((c) => {
-          const groups = []; const gm = new Map();
-          included.filter((i) => i.category === c).forEach((i) => {
-            const k = [i.type, i.brand, i.model, i.size].join("|");
-            if (!gm.has(k)) { gm.set(k, { i, n: 0 }); groups.push(k); }
-            gm.get(k).n++;
-          });
-          return `<div class="cat"><h4>${c}</h4>
-            ${groups.map((k) => { const { i, n } = gm.get(k); const det = [i.brand, i.model, i.size].filter(Boolean).join(" · ");
-              return `<div class="item"><span>${esc(i.type)}${n > 1 ? ` <span class="cnt">×${n}</span>` : ""}</span><span class="det">${esc(det)}</span></div>`; }).join("")}
-          </div>`;
-        }).join("")}
+        ${reportLinesByCat().map(({ cat, lines }) => `<div class="cat"><h4>${cat}</h4>
+          ${lines.map(({ i, depth, n }) => { const det = [i.brand, i.model, i.size].filter(Boolean).join(" · ");
+            return `<div class="item ${depth ? "sub" : ""}" ${depth > 1 ? `style="padding-left:${depth * 14}px"` : ""}><span>${esc(i.type)}${n > 1 ? ` <span class="cnt">×${n}</span>` : ""}</span><span class="det">${esc(det)}</span></div>`; }).join("")}
+        </div>`).join("")}
       </div>
       <div class="footer-note"><b>NB:</b> Randaberg Musikkorps jobber med å oppgradere slagverkutstyret. Lista inneholder utstyr med varierende standard. Alt som er oppgitt er fullt mulig å bruke, men kan være slitt / av lavere kvalitet. Ta gjerne kontakt på jorgen.jarnes@gmail.com ved spørsmål om utstyret.</div>
-    </div>`;
+    </div>`}`;
+}
+// Tilpass-modus: én rad pr. element (individuelt – ekskludering er pr. id, ikke
+// pr. gruppe). Alle etterkommere rendres alltid; dybdevalget dimmer dem bare
+// (klassen rep-off), så toggling ikke trenger render().
+function genCustomizePanel() {
+  const repRow = (i, level, rootId) => {
+    const det = [i.brand, i.model, i.size].filter(Boolean).join(" · ");
+    const kids = invChildren(i.id);
+    const depth = Number(i.report_depth) || 0;
+    const hasGrand = kids.some((c) => invChildren(c.id).length);
+    const off = level > 0 && level > (Number(inv(rootId)?.report_depth) || 0);
+    return `<div class="rep-row ${i.report_excluded ? "rep-excluded" : ""} ${off ? "rep-off" : ""}"
+        ${level ? `data-rep-under="${rootId}" data-rep-level="${level}" style="padding-left:${14 + level * 22}px"` : ""}>
+        <label class="rep-check"><input type="checkbox" data-rep-ex="${i.id}" ${i.report_excluded ? "" : "checked"}></label>
+        <span class="rt">${esc(i.type)}${det ? ` <span class="det">${esc(det)}</span>` : ""}</span>
+        ${!level && kids.length ? `<div class="seg rep-depth">
+          <button type="button" data-rep-depth="${i.id}|0" class="${depth === 0 ? "on" : ""}">Kun enheten</button>
+          <button type="button" data-rep-depth="${i.id}|1" class="${depth === 1 || (!hasGrand && depth > 1) ? "on" : ""}">+ deler</button>
+          ${hasGrand ? `<button type="button" data-rep-depth="${i.id}|99" class="${depth >= 2 ? "on" : ""}">Alle nivåer</button>` : ""}
+        </div>` : ""}
+      </div>`
+      + kids.map((c) => repRow(c, level + 1, rootId)).join("");
+  };
+  const roots = invRoots();
+  const cats = CATEGORIES.filter((c) => roots.some((i) => i.category === c));
+  return `<div class="panel rep-config">
+    <p class="muted-note" style="padding:12px 14px 0">Velg hva som tas med i oversikten. Valgene lagres og gjelder også utskrift og nedlasting.</p>
+    ${cats.map((c) => `<div class="sec"><span class="t">${c}</span></div>
+      ${roots.filter((i) => i.category === c).map((i) => repRow(i, 0, i.id)).join("")}`).join("")}
+  </div>`;
 }
 function reportText() {
-  const minS = state.ovMinStatus, minQ = state.ovMinQuality;
-  const pass = (i) => (minS === "Alle" || STATUS_RANK[i.status] >= STATUS_RANK[minS]) && (minQ === "Alle" || QUALITY_RANK[i.quality] >= QUALITY_RANK[minQ]);
-  const included = state.inventory.filter((i) => (!i.parent_id || !inv(i.parent_id)) && pass(i));
   let out = `Slagverksoversikt Randaberg Musikkorps\nSist oppdatert: ${new Date().toLocaleDateString("nb-NO")}\n`;
-  CATEGORIES.forEach((c) => {
-    const items = included.filter((i) => i.category === c); if (!items.length) return;
-    const groups = []; const gm = new Map();
-    items.forEach((i) => { const k = [i.type, i.brand, i.model, i.size].join("|"); if (!gm.has(k)) { gm.set(k, { i, n: 0 }); groups.push(k); } gm.get(k).n++; });
-    out += `\n${c}\n`;
-    groups.forEach((k) => { const { i, n } = gm.get(k); const det = [i.brand, i.model, i.size].filter(Boolean).join(" · ");
-      out += `  ${i.type}${n > 1 ? ` ×${n}` : ""}${det ? "  –  " + det : ""}\n`; });
+  reportLinesByCat().forEach(({ cat, lines }) => {
+    out += `\n${cat}\n`;
+    lines.forEach(({ i, depth, n }) => { const det = [i.brand, i.model, i.size].filter(Boolean).join(" · ");
+      out += `  ${"    ".repeat(depth)}${i.type}${n > 1 ? ` ×${n}` : ""}${det ? "  –  " + det : ""}\n`; });
   });
   return out;
 }
@@ -879,6 +954,7 @@ function renderModal() {
   if (m.kind === "brand-form") return sheetBrandForm(m);
   if (m.kind === "option-form") return sheetOptionForm(m);
   if (m.kind === "choose-list") return sheetChooseList(m);
+  if (m.kind === "choose-option") return sheetChooseOption(m);
   return m.kind.includes("inv") ? sheetInv(m) : sheetWish(m);
 }
 function sheetInv(m) {
@@ -1036,6 +1112,21 @@ function sheetChooseList(m) {
   </div></div>`;
 }
 
+// Velg alternativ når en mangel med flere alternativer droppes i en liste.
+function sheetChooseOption(m) {
+  const w = wish(m.wishId); const l = byId(state.lists, m.listId);
+  if (!w || !l) { state.modal = null; return ""; }
+  const body = `<div class="fset">
+    <div class="picklist">${(w.options || []).map((o) => `<label data-choose-opt="${o.id}"><span style="flex:1">${esc(optionName(o))}</span><span class="price">${fmt(o.price)}</span></label>`).join("")}</div>
+  </div>`;
+  return `<div class="sheet-bg" data-act="close-modal"><div class="sheet" data-stop>
+    <div class="grab"></div>
+    <div class="shead"><div class="t"><h3>Hvilket alternativ?</h3><div class="sub">${esc(w.type)} → «${esc(l.name)}»</div></div><button class="x" data-act="close-modal">✕</button></div>
+    <div class="sbody">${body}</div>
+    <div class="sfoot"><span class="spacer"></span><button class="btn ghost" data-act="close-modal">Avbryt</button></div>
+  </div></div>`;
+}
+
 // ── Bunn: AI-bar + fanelinje (chat-panel erstatter begge når åpen) ────
 function renderBottom() {
   const open = state.chatOpen;
@@ -1047,7 +1138,8 @@ function renderBottom() {
         <span class="ai">AI</span>
       </div>
       <nav class="tabbar">
-        ${TABS.map(([k, l]) => `<button class="${state.tab === k ? "active" : ""}" data-tab="${k}">${l}<span class="u"></span></button>`).join("")}
+        ${TABS.map(([k, l]) => { const co = (state.tab === "mangler" && k === "lister") || (state.tab === "lister" && k === "mangler");
+          return `<button class="${state.tab === k ? "active" : co ? "co-active" : ""}" data-tab="${k}">${l}<span class="u"></span></button>`; }).join("")}
       </nav>
       <div class="dock-panel" id="dockPanel">
         <div class="dock-head">${logo(26, "red")}
@@ -1069,7 +1161,7 @@ function wire() {
   const q = (sel) => root.querySelectorAll(sel);
   q("[data-tab]").forEach((b) => b.onclick = () => {
     state.tab = b.dataset.tab; state.modal = null; state.q = ""; state.searchFocus = false;
-    state.retiredView = false; state.listArchive = false; render();
+    state.retiredView = false; state.listArchive = false; state.genCustomize = false; render();
   });
   q("[data-ov]").forEach((s) => s.onchange = () => { state["ovMin" + s.dataset.ov[0].toUpperCase() + s.dataset.ov.slice(1)] = s.value; render(); });
 
@@ -1135,6 +1227,31 @@ function wire() {
   q("[data-li-edit]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); if (!el.dataset.liEdit) return; openModal({ kind: "edit-wish", item: { ...wish(el.dataset.liEdit) } }); });
   q("[data-toggleitem]").forEach((cb) => cb.onchange = () => { const [lid, oid] = splitFirst(cb.dataset.toggleitem); toggleListItem(lid, oid, cb.checked); });
   q("[data-choose-list]").forEach((el) => el.onclick = () => addToListChosen(el.dataset.chooseList, state.modal.optionId));
+  q("[data-choose-opt]").forEach((el) => el.onclick = () => addToListChosen(state.modal.listId, el.dataset.chooseOpt));
+
+  // Dra-og-slipp (kun delt desktop-visning): alternativ eller mangel-rad →
+  // innkjøpsliste. addToList på serveren er en idempotent upsert, så et
+  // gjentatt slipp lager aldri duplikat.
+  q("[data-drag-opt],[data-drag-wish]").forEach((el) => {
+    el.ondragstart = (e) => {
+      const w = el.dataset.dragWish ? wish(el.dataset.dragWish) : null;
+      dragPayload = el.dataset.dragOpt ? { optionId: el.dataset.dragOpt }
+        : (w.options || []).length === 1 ? { optionId: w.options[0].id } : { wishId: w.id };
+      e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData("text/plain", "");
+      el.classList.add("dragging");
+    };
+    el.ondragend = () => { dragPayload = null; el.classList.remove("dragging"); };
+  });
+  q("[data-droplist]").forEach((el) => {
+    el.ondragover = (e) => { if (!dragPayload) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; el.classList.add("drop-hover"); };
+    el.ondragleave = (e) => { if (el.contains(e.relatedTarget)) return; el.classList.remove("drop-hover"); };
+    el.ondrop = (e) => {
+      e.preventDefault(); el.classList.remove("drop-hover");
+      const p = dragPayload; dragPayload = null; if (!p) return;
+      if (p.optionId) return addToListChosen(el.dataset.droplist, p.optionId);
+      openModal({ kind: "choose-option", listId: el.dataset.droplist, wishId: p.wishId });
+    };
+  });
   q("[data-stoplink]").forEach((el) => el.onclick = (e) => e.stopPropagation());
 
   // Merker
@@ -1154,6 +1271,26 @@ function wire() {
     state.modal.item[key] = val;
     el.parentElement.querySelectorAll("[data-seg]").forEach((b) => b.classList.toggle("on", b === el));
   });
+  // Rapport-tilpasning: selvbetjente kontroller – oppdaterer egen rad + state
+  // optimistisk og lagrer i bakgrunnen. Rapporten tegnes fra state når man
+  // forlater Tilpass, så ingen render() her.
+  q("[data-rep-ex]").forEach((cb) => cb.onchange = () => {
+    const i = inv(cb.dataset.repEx); if (!i) return;
+    const val = cb.checked ? 0 : 1;
+    const prev = i.report_excluded; i.report_excluded = val;
+    cb.closest(".rep-row").classList.toggle("rep-excluded", !!val);
+    api(`/inventory/${i.id}`, { method: "PUT", body: JSON.stringify({ report_excluded: val }) })
+      .catch(() => { i.report_excluded = prev; cb.checked = !prev; cb.closest(".rep-row").classList.toggle("rep-excluded", !!prev); toast("Lagring feilet"); });
+  });
+  q("[data-rep-depth]").forEach((el) => el.onclick = () => {
+    const [id, d] = splitFirst(el.dataset.repDepth); const i = inv(id); if (!i) return;
+    const val = Number(d);
+    el.parentElement.querySelectorAll("[data-rep-depth]").forEach((b) => b.classList.toggle("on", b === el));
+    i.report_depth = val;
+    q(`[data-rep-under="${id}"]`).forEach((r) => r.classList.toggle("rep-off", Number(r.dataset.repLevel) > val));
+    api(`/inventory/${id}`, { method: "PUT", body: JSON.stringify({ report_depth: val }) }).catch(() => toast("Lagring feilet"));
+  });
+
   // Merke-kategorier: flervalg. Minst én må stå igjen.
   q("[data-catchip]").forEach((el) => el.onclick = () => {
     const c = el.dataset.catchip;
@@ -1193,6 +1330,7 @@ function wire() {
       "toggle-retired": () => { state.retiredView = !state.retiredView; render(); },
       "toggle-archive": () => { state.listArchive = !state.listArchive; render(); },
       "close-export": () => { state.exportMenu = null; render(); },
+      "toggle-gen-custom": () => { state.genCustomize = !state.genCustomize; render(); },
       "copy-report": () => { navigator.clipboard.writeText(reportText()); toast("Kopiert"); },
       "print-report": () => window.print(),
       "download-report": () => downloadCSV([[reportText()]], "slagverksoversikt.txt"),
@@ -1357,6 +1495,9 @@ function initSwipeNav() {
 try { screen.orientation && screen.orientation.lock && screen.orientation.lock("portrait").catch(() => {}); } catch { /* ikke støttet */ }
 initGlobalListeners();
 initSwipeNav();
+// Delt visning + draggable-attributter avhenger av vindusbredden – tegn på nytt
+// når brytepunktet krysses.
+matchMedia("(min-width: 1000px)").addEventListener("change", () => { if (state.code) render(); });
 (async function boot() {
   if (state.code) { try { await loadAll(); } catch { logout(); } }
   else render();
