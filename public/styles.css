@@ -727,7 +727,6 @@ nav.tabbar button.active .u { background: var(--red); }
   .split-col, .split-col:not(.active) { display: block; min-width: 0; }
   .split .dcell { display: none; }
   .split .row.deskcols .sub { display: block; }
-  .sitem.co .bar { background: var(--brass-l); }
   [draggable="true"] { cursor: grab; }
   .dragging { opacity: .5; }
   .listbox.drop-hover { outline: 2px dashed var(--brass); outline-offset: -2px; background: var(--surface-2); border-radius: 8px; }

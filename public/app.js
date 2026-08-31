@@ -396,8 +396,12 @@ function renderSidebar() {
   };
   return `<aside class="side">
     <div class="sbrand">${logo(34, "red")}<div><div class="t">Slagverk</div><div class="s">Randaberg MK</div></div></div>
-    <nav class="snav">${TABS.map(([k, l]) => { const co = (state.tab === "mangler" && k === "lister") || (state.tab === "lister" && k === "mangler");
-      return `<div class="sitem ${state.tab === k ? "on" : co ? "co" : ""}" data-tab="${k}"><span class="bar"></span>${l}<span class="sp"></span><span class="n">${counts[k]}</span></div>`; }).join("")}</nav>
+    <nav class="snav">${[
+      ["oversikt", "Oversikt", `${counts.oversikt}`],
+      ["mangler", "Mangler og innkjøp", `${counts.mangler} · ${counts.lister}`],
+      ["merker", "Merker", `${counts.merker}`],
+    ].map(([k, l, n]) => { const on = state.tab === k || (k === "mangler" && state.tab === "lister");
+      return `<div class="sitem ${on ? "on" : ""}" data-tab="${k}"><span class="bar"></span>${l}<span class="sp"></span><span class="n">${n}</span></div>`; }).join("")}</nav>
     ${sidebarFilters()}
     <div class="sflex"></div>
     <div class="sfoot">
@@ -417,7 +421,8 @@ function render() {
   const scrollY = window.scrollY;
   const tabChanged = prevTab !== state.tab;
   prevTab = state.tab;
-  const title = TAB_TITLE[state.tab] || TAB_TITLE.oversikt;
+  const title = isSplit() && (state.tab === "mangler" || state.tab === "lister")
+    ? "Mangler og innkjøp" : TAB_TITLE[state.tab] || TAB_TITLE.oversikt;
   root.innerHTML = `
     <div class="shell">
     ${renderSidebar()}
@@ -1192,8 +1197,7 @@ function renderBottom() {
         <span class="ai">AI</span>
       </div>
       <nav class="tabbar">
-        ${TABS.map(([k, l]) => { const co = (state.tab === "mangler" && k === "lister") || (state.tab === "lister" && k === "mangler");
-          return `<button class="${state.tab === k ? "active" : co ? "co-active" : ""}" data-tab="${k}">${l}<span class="u"></span></button>`; }).join("")}
+        ${TABS.map(([k, l]) => `<button class="${state.tab === k ? "active" : ""}" data-tab="${k}">${l}<span class="u"></span></button>`).join("")}
       </nav>
       <div class="dock-panel" id="dockPanel">
         <div class="dock-head">${logo(26, "red")}
