@@ -37,7 +37,7 @@ const state = {
   filters: { category: [], status: [], quality: [], brand: [] },
   q: "", searchFocus: false,
   filterSheet: false,
-  expandedGroups: {}, expandedWish: {}, expandedNodes: {},
+  expandedGroups: {}, expandedWish: {}, expandedNodes: {}, collapsedLists: {},
   retiredView: false, listArchive: false, exportMenu: null,
   ovMinStatus: "Alle", ovMinQuality: "Alle", genCustomize: false,
   chat: [], chatBusy: false, chatOpen: false, lastActions: [],
@@ -795,8 +795,20 @@ function listSection(l) {
   const items = (l.items || []).map((it) => ({ it, o: optionById(it.option_id), w: wish(it.wishlist_id) })).filter((x) => x.o);
   const pct = l.budget ? Math.min(100, (sum / l.budget) * 100) : 0;
   const over = l.budget ? sum > l.budget : false;
+  const closed = !!state.collapsedLists[l.id];
+  // Kollapset kort: kun headeren, med nøkkelinfo (antall varer, sum, ev. budsjettrest).
+  if (closed) {
+    return `<div class="listbox" data-droplist="${l.id}">
+      <div class="sec list click" data-togglelist="${l.id}">
+        <span class="t"><span class="caret">▸</span> ${esc(l.name)} <span class="n">${items.length}</span></span>
+        <span class="linfo">${items.length} vare${items.length === 1 ? "" : "r"}${l.budget ? ` · ${over ? "over budsjett med " + fmt(sum - l.budget) : fmt(l.budget - sum) + " igjen"}` : ""}</span>
+        <span class="sum">${fmt(sum)}</span>
+        <span class="act" data-edit-list="${l.id}">✎</span></div>
+    </div>`;
+  }
   return `<div class="listbox" data-droplist="${l.id}">
-    <div class="sec list"><span class="t">${esc(l.name)} <span class="n">${items.length}</span></span>
+    <div class="sec list click" data-togglelist="${l.id}">
+      <span class="t"><span class="caret">▾</span> ${esc(l.name)} <span class="n">${items.length}</span></span>
       <span class="sum">${fmt(sum)}</span>
       <span class="act" data-edit-list="${l.id}">✎</span></div>
     ${items.length ? items.map(({ it, o, w }) => `<div class="li">
@@ -1279,6 +1291,7 @@ function wire() {
 
   // Lister
   q("[data-edit-list]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); openModal({ kind: "list-form", item: { ...byId(state.lists, el.dataset.editList) } }); });
+  q("[data-togglelist]").forEach((el) => el.onclick = () => { const id = el.dataset.togglelist; state.collapsedLists[id] = !state.collapsedLists[id]; render(); });
   q("[data-add-items]").forEach((el) => el.onclick = () => openModal({ kind: "list-items", listId: el.dataset.addItems }));
   q("[data-export-toggle]").forEach((el) => el.onclick = (e) => { e.stopPropagation(); const id = el.dataset.exportToggle; state.exportMenu = state.exportMenu === id ? null : id; render(); });
   q("[data-export-xlsx]").forEach((el) => el.onclick = () => { state.exportMenu = null; exportListExcel(byId(state.lists, el.dataset.exportXlsx)); render(); });

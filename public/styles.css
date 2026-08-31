@@ -241,6 +241,9 @@ main.view-enter { animation: fade .3s ease; }
 .sec.list .t { font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--ink); letter-spacing: 0; text-transform: none; }
 .sec.list .t .n { font-family: var(--font-ui); font-size: 11px; font-weight: 700; }
 .sec.list .sum { font-size: 14px; font-weight: 700; color: var(--brass-d); font-variant-numeric: tabular-nums; }
+.sec.list.click { cursor: pointer; }
+.sec.list .t .caret { font-size: 11px; }
+.sec.list .linfo { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .row {
   display: flex; gap: 10px; align-items: flex-start;
