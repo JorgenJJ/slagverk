@@ -58,7 +58,9 @@ const TOOLS = [
   { name: "update_inventory", description: "Endre et utstyr, f.eks. status/kvalitet, eller flytt det inn under en komponent. Eks: «xylofonen er ødelagt».",
     input_schema: { type: "object", required: ["ref"], properties: {
       ref: ref("utstyret"), type: str(), brand: str(), model: str(), size: str(), category: enm(CAT), status: enm(STAT), quality: enm(QUAL), notes: str(),
-      parent_ref: ref("flytt inn under denne komponenten") } } },
+      parent_ref: ref("flytt inn under denne komponenten"),
+      report_excluded: { type: "integer", enum: [0, 1], description: "1 = skjul elementet (og underdeler) i generert oversikt" },
+      report_depth: { type: "integer", description: "for rot-elementer: barnenivåer i generert oversikt (0 = kun enheten, 1 = + deler, 99 = alle)" } } } },
   { name: "delete_inventory", description: "Slett et utstyr.",
     input_schema: { type: "object", required: ["ref"], properties: { ref: ref("utstyret") } } },
 

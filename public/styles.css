@@ -241,6 +241,9 @@ main.view-enter { animation: fade .3s ease; }
 .sec.list .t { font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--ink); letter-spacing: 0; text-transform: none; }
 .sec.list .t .n { font-family: var(--font-ui); font-size: 11px; font-weight: 700; }
 .sec.list .sum { font-size: 14px; font-weight: 700; color: var(--brass-d); font-variant-numeric: tabular-nums; }
+.sec.list.click { cursor: pointer; }
+.sec.list .t .caret { font-size: 11px; }
+.sec.list .linfo { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .row {
   display: flex; gap: 10px; align-items: flex-start;
@@ -524,7 +527,21 @@ nav.tabbar button.active .u { background: var(--red); }
 .report .cat .item .det { color: #777; font-size: 13px; text-align: right; }
 .report .cat .item .cnt { color: #999; font-size: 12.5px; }
 .report .footer-note { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12.5px; color: #666; line-height: 1.5; }
+.report .cat .item.sub { padding-left: 14px; }
+.report .cat .item.sub > span:first-child { color: #555; font-size: 13.5px; }
 @media (max-width: 600px) { .report { padding: 22px; } .report .grid2 { grid-template-columns: 1fr; gap: 18px; } }
+
+/* Tilpass-modus: én rad pr. element med sjekkboks + ev. dybdevalg */
+.gen-controls .btn.on { border-color: var(--brass); color: var(--ink); background: var(--surface-2); }
+.rep-config { background: var(--surface); }
+.rep-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.rep-row:last-child { border-bottom: none; }
+.rep-row .rt { flex: 1; min-width: 0; }
+.rep-row .det { color: var(--muted); font-size: 12.5px; }
+.rep-row.rep-excluded, .rep-row.rep-off { opacity: .4; }
+.rep-row .seg.rep-depth { flex: none; }
+.rep-row .seg.rep-depth button { font-size: 11.5px; padding: 4px 8px; flex: none; }
+.seg.rep-depth button.on { background: var(--brass-d); border-color: #6a5228; }
 
 /* ─────────────── Utskrift ─────────────── */
 @media print {
@@ -576,9 +593,16 @@ nav.tabbar button.active .u { background: var(--red); }
 @media (min-width: 721px) {
   main { padding-bottom: 40px; }
   .panel { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin: 0 16px 16px; box-shadow: var(--shadow); }
+  /* .panel har overflow:hidden og blir dermed klebe-konteksten – sticky .sec
+     ville pinne 59px NED i panelet og overlappe raden over. Slå av sticky her. */
+  .panel .sec { position: static; }
   .sec:first-child { border-top: none; }
   .row:last-child, .li:last-child, .brow:last-child { border-bottom: none; }
 }
+
+/* Delt visning: Mangler + Innkjøp side om side på desktop.
+   Begge kolonner rendres alltid; under brytepunktet vises kun den aktive. */
+.split-col:not(.active) { display: none; }
 
 /* ───────────────────────────────────────────────────────────
    Desktop (≥1024px): sidekolonne med faner + filtre, rader som
@@ -699,4 +723,14 @@ nav.tabbar button.active .u { background: var(--red); }
   .sheet .grab { display: none; }
   .sheet .shead { padding-top: 18px; }
   @keyframes sheetright { from { transform: translateX(40px); opacity: .6; } to { transform: none; opacity: 1; } }
+
+  /* Delt visning: Mangler + Innkjøp side om side. Kolonnene er halvbrede, så
+     tabellkolonnene (dcell) vikes for den kompakte radformen med .sub. */
+  .split { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }
+  .split-col, .split-col:not(.active) { display: block; min-width: 0; }
+  .split .dcell { display: none; }
+  .split .row.deskcols .sub { display: block; }
+  [draggable="true"] { cursor: grab; }
+  .dragging { opacity: .5; }
+  .listbox.drop-hover { outline: 2px dashed var(--brass); outline-offset: -2px; background: var(--surface-2); border-radius: 8px; }
 }

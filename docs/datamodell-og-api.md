@@ -21,6 +21,8 @@ genereres i Worker-en med `newId(prefix)` når klienten ikke sender egen `id`.
 | `status` | TEXT | `ok` | `ok` \| `redusert` \| `ødelagt` |
 | `quality` | TEXT | `ukjent` | `bra` \| `greit` \| `dårlig` \| `ukjent` |
 | `notes` | TEXT | `''` | fritekst |
+| `report_excluded` | INTEGER | `0` | `1` = skjules (med hele subtreet) i generert oversikt |
+| `report_depth` | INTEGER | `0` | på røtter: antall barnenivåer i generert oversikt (`0` = kun enheten, `99` = alle) |
 | `updated_at` | TEXT | `datetime('now')` | |
 
 ### `wishlist` – mangler / ønsker
